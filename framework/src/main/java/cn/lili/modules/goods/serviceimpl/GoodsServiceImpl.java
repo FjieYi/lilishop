@@ -22,7 +22,10 @@ import cn.lili.modules.goods.entity.enums.GoodsStatusEnum;
 import cn.lili.modules.goods.entity.vos.GoodsSkuVO;
 import cn.lili.modules.goods.entity.vos.GoodsVO;
 import cn.lili.modules.goods.mapper.GoodsMapper;
-import cn.lili.modules.goods.service.*;
+import cn.lili.modules.goods.service.CategoryService;
+import cn.lili.modules.goods.service.GoodsGalleryService;
+import cn.lili.modules.goods.service.GoodsService;
+import cn.lili.modules.goods.service.GoodsSkuService;
 import cn.lili.modules.member.entity.dos.MemberEvaluation;
 import cn.lili.modules.member.entity.enums.EvaluationGradeEnum;
 import cn.lili.modules.member.service.MemberEvaluationService;
@@ -107,11 +110,6 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
      */
     @Autowired
     private RocketmqCustomProperties rocketmqCustomProperties;
-    /**
-     * 分类-参数
-     */
-    @Autowired
-    private CategoryParameterGroupService categoryParameterGroupService;
 
     @Autowired
     private FreightTemplateService freightTemplateService;
@@ -255,12 +253,23 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return this.page(PageUtil.initPage(goodsSearchParams), goodsSearchParams.queryWrapper());
     }
 
+    /**
+     * 商品查询
+     *
+     * @param goodsSearchParams 查询参数
+     * @return 商品信息
+     */
+    @Override
+    public List<Goods> queryListByParams(GoodsSearchParams goodsSearchParams) {
+        return this.list(goodsSearchParams.queryWrapper());
+    }
+
     @Override
     public boolean auditGoods(List<String> goodsIds, GoodsAuthEnum goodsAuthEnum) {
         boolean result = false;
         for (String goodsId : goodsIds) {
             Goods goods = this.checkExist(goodsId);
-            goods.setIsAuth(goodsAuthEnum.name());
+            goods.setAuthFlag(goodsAuthEnum.name());
             result = this.updateById(goods);
             goodsSkuService.updateGoodsSkuStatus(goods);
             //删除之前的缓存
@@ -290,6 +299,34 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
 
         //修改规格商品
         LambdaQueryWrapper<Goods> queryWrapper = this.getQueryWrapperByStoreAuthority();
+        queryWrapper.in(Goods::getId, goodsIds);
+        List<Goods> goodsList = this.list(queryWrapper);
+        for (Goods goods : goodsList) {
+            goodsSkuService.updateGoodsSkuStatus(goods);
+        }
+        return result;
+    }
+
+    @Override
+    public Boolean managerUpdateGoodsMarketAble(List<String> goodsIds, GoodsStatusEnum goodsStatusEnum, String underReason) {
+        boolean result;
+
+        //如果商品为空，直接返回
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return true;
+        }
+
+        //检测管理员权限
+        this.checkManagerAuthority();
+
+        LambdaUpdateWrapper<Goods> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.set(Goods::getMarketEnable, goodsStatusEnum.name());
+        updateWrapper.set(Goods::getUnderMessage, underReason);
+        updateWrapper.in(Goods::getId, goodsIds);
+        result = this.update(updateWrapper);
+
+        //修改规格商品
+        LambdaQueryWrapper<Goods> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.in(Goods::getId, goodsIds);
         List<Goods> goodsList = this.list(queryWrapper);
         for (Goods goods : goodsList) {
@@ -384,7 +421,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return this.count(
                 new LambdaQueryWrapper<Goods>()
                         .eq(Goods::getStoreId, storeId)
-                        .eq(Goods::getIsAuth, GoodsAuthEnum.PASS.name())
+                        .eq(Goods::getAuthFlag, GoodsAuthEnum.PASS.name())
                         .eq(Goods::getMarketEnable, GoodsStatusEnum.UPPER.name()));
     }
 
@@ -445,7 +482,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         Setting setting = settingService.get(SettingEnum.GOODS_SETTING.name());
         GoodsSetting goodsSetting = JSONUtil.toBean(setting.getSettingValue(), GoodsSetting.class);
         //是否需要审核
-        goods.setIsAuth(Boolean.TRUE.equals(goodsSetting.getGoodsCheck()) ? GoodsAuthEnum.TOBEAUDITED.name() : GoodsAuthEnum.PASS.name());
+        goods.setAuthFlag(Boolean.TRUE.equals(goodsSetting.getGoodsCheck()) ? GoodsAuthEnum.TOBEAUDITED.name() : GoodsAuthEnum.PASS.name());
         //判断当前用户是否为店铺
         if (Objects.requireNonNull(UserContext.getCurrentUser()).getRole().equals(UserEnums.STORE)) {
             StoreVO storeDetail = this.storeService.getStoreDetail();
@@ -475,6 +512,20 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         return goods;
     }
 
+
+    /**
+     * 获取UpdateWrapper（检查用户越权）
+     *
+     * @return updateWrapper
+     */
+    private LambdaUpdateWrapper<Goods> getUpdateWrapperByStoreAuthority() {
+        LambdaUpdateWrapper<Goods> updateWrapper = new LambdaUpdateWrapper<>();
+        AuthUser authUser = this.checkStoreAuthority();
+        updateWrapper.eq(Goods::getStoreId, authUser.getStoreId());
+        return updateWrapper;
+    }
+
+
     /**
      * 检查当前登录的店铺
      *
@@ -484,6 +535,20 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
         AuthUser currentUser = UserContext.getCurrentUser();
         //如果当前会员不为空，且为店铺角色
         if (currentUser != null && (currentUser.getRole().equals(UserEnums.STORE) && currentUser.getStoreId() != null)) {
+            return currentUser;
+        }
+        return null;
+    }
+
+    /**
+     * 检查当前登录的店铺
+     *
+     * @return 当前登录的店铺
+     */
+    private AuthUser checkManagerAuthority() {
+        AuthUser currentUser = UserContext.getCurrentUser();
+        //如果当前会员不为空，且为店铺角色
+        if (currentUser != null && (currentUser.getRole().equals(UserEnums.MANAGER))) {
             return currentUser;
         } else {
             throw new ServiceException(ResultCode.USER_AUTHORITY_ERROR);
@@ -495,12 +560,10 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
      *
      * @return updateWrapper
      */
-    private LambdaUpdateWrapper<Goods> getUpdateWrapperByStoreAuthority() {
+    private LambdaUpdateWrapper<Goods> getUpdateWrapperByManagerAuthority() {
         LambdaUpdateWrapper<Goods> updateWrapper = new LambdaUpdateWrapper<>();
         AuthUser authUser = this.checkStoreAuthority();
-        if (authUser != null) {
-            updateWrapper.eq(Goods::getStoreId, authUser.getStoreId());
-        }
+        updateWrapper.eq(Goods::getStoreId, authUser.getStoreId());
         return updateWrapper;
     }
 
@@ -512,9 +575,7 @@ public class GoodsServiceImpl extends ServiceImpl<GoodsMapper, Goods> implements
     private LambdaQueryWrapper<Goods> getQueryWrapperByStoreAuthority() {
         LambdaQueryWrapper<Goods> queryWrapper = new LambdaQueryWrapper<>();
         AuthUser authUser = this.checkStoreAuthority();
-        if (authUser != null) {
-            queryWrapper.eq(Goods::getStoreId, authUser.getStoreId());
-        }
+        queryWrapper.eq(Goods::getStoreId, authUser.getStoreId());
         return queryWrapper;
     }
 
