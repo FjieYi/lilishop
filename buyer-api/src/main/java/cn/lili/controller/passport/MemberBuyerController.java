@@ -1,10 +1,16 @@
 package cn.lili.controller.passport;
 
+import cn.lili.common.enums.ResultCode;
 import cn.lili.common.enums.ResultUtil;
+import cn.lili.common.exception.ServiceException;
+import cn.lili.common.security.AuthUser;
+import cn.lili.common.security.context.UserContext;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.member.entity.dos.Member;
 import cn.lili.modules.member.entity.dto.MemberEditDTO;
+import cn.lili.modules.member.entity.enums.QRCodeLoginSessionStatusEnum;
+import cn.lili.modules.member.entity.vo.QRLoginResultVo;
 import cn.lili.modules.member.service.MemberService;
 import cn.lili.modules.sms.SmsUtil;
 import cn.lili.modules.verification.entity.enums.VerificationEnums;
@@ -13,10 +19,17 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.DeferredResult;
 
 import javax.validation.constraints.NotNull;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 买家端,会员接口
@@ -24,9 +37,10 @@ import javax.validation.constraints.NotNull;
  * @author Chopper
  * @since 2020/11/16 10:07 下午
  */
+@Slf4j
 @RestController
 @Api(tags = "买家端,会员接口")
-@RequestMapping("/buyer/members")
+@RequestMapping("/buyer/passport/member")
 public class MemberBuyerController {
 
     @Autowired
@@ -35,6 +49,84 @@ public class MemberBuyerController {
     private SmsUtil smsUtil;
     @Autowired
     private VerificationService verificationService;
+
+
+    @ApiOperation(value = "web-获取登录二维码")
+    @PostMapping(value = "/pc_session", produces = "application/json;charset=UTF-8")
+    public ResultMessage<Object> createPcSession() {
+        return ResultUtil.data(memberService.createPcSession());
+    }
+
+
+    /**
+     * 长轮询：参考nacos
+     *
+     * @param token
+     * @param beforeSessionStatus 上次记录的session状态
+     * @return
+     */
+    @ApiOperation(value = "web-二维码登录")
+    @PostMapping(value = "/session_login/{token}", produces = "application/json;charset=UTF-8")
+    public Object loginWithSession(@PathVariable("token") String token, Integer beforeSessionStatus) {
+        log.info("receive login with session key {}", token);
+        ResponseEntity<ResultMessage<Object>> timeoutResponseEntity =
+                new ResponseEntity<>(ResultUtil.error(ResultCode.ERROR), HttpStatus.OK);
+        int timeoutSecond = 20;
+        DeferredResult<ResponseEntity<Object>> deferredResult = new DeferredResult<>(timeoutSecond * 1000L, timeoutResponseEntity);
+         // 用于记录重试次数
+        AtomicInteger retryCount = new AtomicInteger(0);
+        CompletableFuture.runAsync(() -> {
+            try {
+                int i = 0;
+                while (i < timeoutSecond) {
+                    QRLoginResultVo queryResult = memberService.loginWithSession(token);
+                    int status = queryResult.getStatus();
+                    if (status == beforeSessionStatus
+                            && (QRCodeLoginSessionStatusEnum.WAIT_SCANNING.getCode() == status
+                            || QRCodeLoginSessionStatusEnum.SCANNING.getCode() == status)) {
+                        //睡眠一秒种，继续等待结果
+                        //TimeUnit.SECONDS.sleep(1);
+                        
+                        // 应用指数退避策略
+                        int baseSleepTime = 1000;  // 基础退避时间（毫秒）
+                        int maxSleepTime = 10000;  // 最大退避时间（毫秒）
+
+                        int sleepTime = Math.min(maxSleepTime, baseSleepTime * (1 + retryCount.getAndIncrement()));
+                        int randomFactor = (int) (Math.random() * (sleepTime / 2));  // 随机化因子
+
+                        TimeUnit.MILLISECONDS.sleep(sleepTime + randomFactor);
+                    } else {
+                        deferredResult.setResult(new ResponseEntity<>(ResultUtil.data(queryResult), HttpStatus.OK));
+                        break;
+                    }
+                    i++;
+                }
+            } catch (Exception e) {
+                log.error("获取登录状态异常，", e);
+                deferredResult.setResult(new ResponseEntity<>(ResultUtil.error(ResultCode.ERROR), HttpStatus.OK));
+                Thread.currentThread().interrupt();
+            }
+        });
+        return deferredResult;
+    }
+
+    @ApiOperation(value = "app扫码")
+    @PostMapping(value = "/app_scanner", produces = "application/json;charset=UTF-8")
+    public ResultMessage<Object> appScanner(String token) {
+        return ResultUtil.data(memberService.appScanner(token));
+    }
+
+
+    @ApiOperation(value = "app扫码-登录确认：同意/拒绝")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "token", value = "sessionToken", required = true, paramType = "query"),
+            @ApiImplicitParam(name = "code", value = "操作：0拒绝登录，1同意登录", required = true, paramType = "query")
+    })
+    @PostMapping(value = "/app_confirm", produces = "application/json;charset=UTF-8")
+    public ResultMessage<Object> appSConfirm(String token, Integer code) {
+        boolean flag = memberService.appSConfirm(token, code);
+        return flag ? ResultUtil.success() : ResultUtil.error(ResultCode.ERROR);
+    }
 
 
     @ApiOperation(value = "登录接口")
@@ -66,8 +158,37 @@ public class MemberBuyerController {
     public ResultMessage<Object> smsLogin(@NotNull(message = "手机号为空") @RequestParam String mobile,
                                           @NotNull(message = "验证码为空") @RequestParam String code,
                                           @RequestHeader String uuid) {
-        smsUtil.verifyCode(mobile, VerificationEnums.LOGIN, uuid, code);
-        return ResultUtil.data(memberService.mobilePhoneLogin(mobile));
+        if (smsUtil.verifyCode(mobile, VerificationEnums.LOGIN, uuid, code)) {
+            return ResultUtil.data(memberService.mobilePhoneLogin(mobile));
+        } else {
+            throw new ServiceException(ResultCode.VERIFICATION_SMS_CHECKED_ERROR);
+        }
+    }
+
+    @ApiOperation(value = "绑定手机号")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "username", value = "用户名", required = true, paramType = "query"),
+            @ApiImplicitParam(name = "mobile", value = "手机号", required = true, paramType = "query"),
+            @ApiImplicitParam(name = "code", value = "验证码", required = true, paramType = "query"),
+    })
+    @PostMapping("/bindMobile")
+    public ResultMessage<Object> bindMobile(@NotNull(message = "用户名不能为空") @RequestParam String username,
+                                            @NotNull(message = "手机号为空") @RequestParam String mobile,
+                                            @NotNull(message = "验证码为空") @RequestParam String code,
+                                            @RequestHeader String uuid) {
+        if (smsUtil.verifyCode(mobile, VerificationEnums.BIND_MOBILE, uuid, code)) {
+            Member member = memberService.findByUsername(username);
+            Member memberByMobile = memberService.findByMobile(mobile);
+            if (member == null) {
+                throw new ServiceException(ResultCode.USER_NOT_EXIST);
+            }
+            if(memberByMobile != null){
+                throw new ServiceException(ResultCode.USER_MOBILE_REPEATABLE_ERROR);
+            }
+            return ResultUtil.data(memberService.changeMobile(member.getId(), mobile));
+        } else {
+            throw new ServiceException(ResultCode.VERIFICATION_SMS_CHECKED_ERROR);
+        }
     }
 
     @ApiOperation(value = "注册用户")
@@ -84,8 +205,11 @@ public class MemberBuyerController {
                                           @RequestHeader String uuid,
                                           @NotNull(message = "验证码不能为空") @RequestParam String code) {
 
-        smsUtil.verifyCode(mobilePhone, VerificationEnums.REGISTER, uuid, code);
-        return ResultUtil.data(memberService.register(username, password, mobilePhone));
+        if (smsUtil.verifyCode(mobilePhone, VerificationEnums.REGISTER, uuid, code)) {
+            return ResultUtil.data(memberService.register(username, password, mobilePhone));
+        } else {
+            throw new ServiceException(ResultCode.VERIFICATION_SMS_CHECKED_ERROR);
+        }
 
     }
 
@@ -106,16 +230,17 @@ public class MemberBuyerController {
                                                @NotNull(message = "验证码为空") @RequestParam String code,
                                                @RequestHeader String uuid) {
         //校验短信验证码是否正确
-        smsUtil.verifyCode(mobile, VerificationEnums.FIND_USER, uuid, code);
-        //校验是否通过手机号可获取会员,存在则将会员信息存入缓存，有效时间3分钟
-        memberService.findByMobile(uuid, mobile);
-
-        return ResultUtil.success();
+        if (smsUtil.verifyCode(mobile, VerificationEnums.FIND_USER, uuid, code)) {
+            //校验是否通过手机号可获取会员,存在则将会员信息存入缓存，有效时间3分钟
+            memberService.findByMobile(uuid, mobile);
+            return ResultUtil.success();
+        } else {
+            throw new ServiceException(ResultCode.VERIFICATION_SMS_CHECKED_ERROR);
+        }
     }
 
     @ApiOperation(value = "修改密码")
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "mobile", value = "手机号", required = true, paramType = "query"),
             @ApiImplicitParam(name = "password", value = "是否保存登录", required = true, paramType = "query")
     })
     @PostMapping("/resetPassword")
@@ -142,11 +267,50 @@ public class MemberBuyerController {
         return ResultUtil.data(memberService.modifyPass(password, newPassword));
     }
 
+    @ApiOperation(value = "初始设置密码")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "newPassword", value = "新密码", required = true, paramType = "query")
+    })
+    @PutMapping("/canInitPassword")
+    public ResultMessage<Object> canInitPassword() {
+        return ResultUtil.data(memberService.canInitPass());
+    }
+
+    @ApiOperation(value = "初始设置密码")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "newPassword", value = "新密码", required = true, paramType = "query")
+    })
+    @PutMapping("/initPassword")
+    public ResultMessage<Object> initPassword(@NotNull(message = "密码不能为空") @RequestParam String password) {
+        memberService.initPass(password);
+        return ResultUtil.success();
+    }
+
+    @ApiOperation(value = "注销账号")
+    @PutMapping("/cancellation")
+    public ResultMessage<Member> cancellation() {
+        memberService.cancellation();
+        return ResultUtil.success();
+    }
 
     @ApiOperation(value = "刷新token")
     @GetMapping("/refresh/{refreshToken}")
     public ResultMessage<Object> refreshToken(@NotNull(message = "刷新token不能为空") @PathVariable String refreshToken) {
         return ResultUtil.data(this.memberService.refreshToken(refreshToken));
+    }
+
+    @GetMapping("/getImUser")
+    @ApiOperation(value = "获取用户信息")
+    public ResultMessage<Member> getImUser() {
+        AuthUser authUser = UserContext.getCurrentUser();
+        return ResultUtil.data(memberService.getById(authUser.getId()));
+    }
+
+    @GetMapping("/getImUserDetail/{memberId}")
+    @ApiImplicitParam(name = "memberId", value = "店铺Id", required = true, dataType = "String", paramType = "path")
+    @ApiOperation(value = "获取用户信息")
+    public ResultMessage<Member> getImUserDetail(@PathVariable String memberId) {
+        return ResultUtil.data(memberService.getById(memberId));
     }
 
 }

@@ -1,9 +1,10 @@
 package cn.lili.cache.limit.interceptor;
 
-import cn.lili.cache.limit.enums.LimitTypeEnums;
 import cn.lili.cache.limit.annotation.LimitPoint;
+import cn.lili.cache.limit.enums.LimitTypeEnums;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
+import cn.lili.common.utils.IpUtils;
 import com.google.common.collect.ImmutableList;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -16,7 +17,6 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import javax.servlet.http.HttpServletRequest;
 import java.io.Serializable;
 
 /**
@@ -45,23 +45,23 @@ public class LimitInterceptor {
     @Before("@annotation(limitPointAnnotation)")
     public void interceptor(LimitPoint limitPointAnnotation) {
         LimitTypeEnums limitTypeEnums = limitPointAnnotation.limitType();
-        String name = limitPointAnnotation.name();
+
         String key;
         int limitPeriod = limitPointAnnotation.period();
         int limitCount = limitPointAnnotation.limit();
-        switch (limitTypeEnums) {
-            case CUSTOMER:
-                key = limitPointAnnotation.key();
-                break;
-            default:
-                key = limitPointAnnotation.key() + getIpAddress();
+        if (limitTypeEnums == LimitTypeEnums.CUSTOMER) {
+            key = limitPointAnnotation.key();
+        } else {
+            key = limitPointAnnotation.key() + IpUtils
+                    .getIpAddress(((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest());
         }
         ImmutableList<String> keys = ImmutableList.of(StringUtils.join(limitPointAnnotation.prefix(), key));
         try {
             Number count = redisTemplate.execute(limitScript, keys, limitCount, limitPeriod);
+            assert count != null;
             log.info("限制请求{}, 当前请求{},缓存key{}", limitCount, count.intValue(), key);
             //如果缓存里没有值，或者他的值小于限制频率
-            if (count.intValue() >= limitCount) {
+            if (count.intValue() > limitCount) {
                 throw new ServiceException(ResultCode.LIMIT_ERROR);
             }
         }
@@ -71,32 +71,9 @@ public class LimitInterceptor {
         } catch (ServiceException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("服务器异常，请稍后再试");
+            log.error("限流异常", e);
+            throw new ServiceException(ResultCode.ERROR);
         }
     }
 
-
-    /**
-     * 默认unknown常量值
-     */
-    private static final String UNKNOWN = "unknown";
-
-    /**
-     * 获取ip
-     * @return ip
-     */
-    public String getIpAddress() {
-        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
-        String ip = request.getHeader("x-forwarded-for");
-        if (ip == null || ip.length() == 0 || UNKNOWN.equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
-        }
-        if (ip == null || ip.length() == 0 || UNKNOWN.equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (ip == null || ip.length() == 0 || UNKNOWN.equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        return ip;
-    }
 }

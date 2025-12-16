@@ -5,9 +5,11 @@ import cn.hutool.core.convert.Convert;
 import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.cache.Cache;
 import cn.lili.cache.CachePrefix;
+import cn.lili.common.aop.annotation.DemoSite;
 import cn.lili.common.context.ThreadContextHolder;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.enums.SwitchEnum;
+import cn.lili.common.event.TransactionCommitSendMQEvent;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.properties.RocketmqCustomProperties;
 import cn.lili.common.security.AuthUser;
@@ -15,11 +17,8 @@ import cn.lili.common.security.context.UserContext;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.Token;
 import cn.lili.common.sensitive.SensitiveWordsFilter;
-import cn.lili.common.utils.BeanUtil;
-import cn.lili.common.utils.CookieUtil;
-import cn.lili.common.utils.UuidUtils;
+import cn.lili.common.utils.*;
 import cn.lili.common.vo.PageVO;
-import cn.lili.modules.connect.config.ConnectAuthEnum;
 import cn.lili.modules.connect.entity.Connect;
 import cn.lili.modules.connect.entity.dto.ConnectAuthUser;
 import cn.lili.modules.connect.service.ConnectService;
@@ -27,8 +26,11 @@ import cn.lili.modules.member.aop.annotation.PointLogPoint;
 import cn.lili.modules.member.entity.dos.Member;
 import cn.lili.modules.member.entity.dto.*;
 import cn.lili.modules.member.entity.enums.PointTypeEnum;
+import cn.lili.modules.member.entity.enums.QRCodeLoginSessionStatusEnum;
 import cn.lili.modules.member.entity.vo.MemberSearchVO;
 import cn.lili.modules.member.entity.vo.MemberVO;
+import cn.lili.modules.member.entity.vo.QRCodeLoginSessionVo;
+import cn.lili.modules.member.entity.vo.QRLoginResultVo;
 import cn.lili.modules.member.mapper.MemberMapper;
 import cn.lili.modules.member.service.MemberService;
 import cn.lili.modules.member.token.MemberTokenGenerate;
@@ -47,13 +49,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 会员接口业务层实现
@@ -62,7 +67,6 @@ import java.util.Objects;
  * @since 2021-03-29 14:10:16
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> implements MemberService {
 
     /**
@@ -90,11 +94,12 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
      */
     @Autowired
     private RocketmqCustomProperties rocketmqCustomProperties;
-    /**
-     * RocketMQ
-     */
+
     @Autowired
     private RocketMQTemplate rocketMQTemplate;
+
+    @Autowired
+    private ApplicationEventPublisher applicationEventPublisher;
     /**
      * 缓存
      */
@@ -113,9 +118,20 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     public Member getUserInfo() {
         AuthUser tokenUser = UserContext.getCurrentUser();
         if (tokenUser != null) {
-            return this.findByUsername(tokenUser.getUsername());
+            Member member = this.findByUsername(tokenUser.getUsername());
+            if(member != null && !member.getDisabled()){
+                throw new ServiceException(ResultCode.USER_STATUS_ERROR);
+            }
+            return member;
         }
         throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+    }
+
+    @Override
+    public Member findByMobile(String mobile) {
+        QueryWrapper<Member> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("mobile", mobile);
+        return this.baseMapper.selectOne(queryWrapper);
     }
 
     @Override
@@ -143,7 +159,33 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
             throw new ServiceException(ResultCode.USER_PASSWORD_ERROR);
         }
         loginBindUser(member);
-        return memberTokenGenerate.createToken(member.getUsername(), false);
+        return memberTokenGenerate.createToken(member, false);
+    }
+
+
+    @Override
+    public void resetPassword(List<String> ids) {
+        String password = new BCryptPasswordEncoder().encode(StringUtils.md5("123456"));
+        LambdaUpdateWrapper<Member> lambdaUpdateWrapper = Wrappers.lambdaUpdate();
+        lambdaUpdateWrapper.in(Member::getId, ids);
+        lambdaUpdateWrapper.set(Member::getPassword, password);
+        this.update(lambdaUpdateWrapper);
+    }
+
+    @Override
+    public void updateHaveShop(Boolean haveStore, String storeId, List<String> memberIds) {
+        List<Member> members = this.baseMapper.selectBatchIds(memberIds);
+        if (members.size() > 0) {
+            members.forEach(member -> {
+                member.setHaveStore(haveStore);
+                if (haveStore) {
+                    member.setStoreId(storeId);
+                } else {
+                    member.setStoreId(null);
+                }
+            });
+            this.updateBatchById(members);
+        }
     }
 
     @Override
@@ -159,6 +201,22 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
             throw new ServiceException(ResultCode.USER_PASSWORD_ERROR);
         }
         //对店铺状态的判定处理
+        return checkMemberStore(member);
+    }
+
+    @Override
+    public Token mobilePhoneStoreLogin(String mobilePhone) {
+        Member member = this.findMember(mobilePhone);
+        //如果手机号不存在则自动注册用户
+        if (member == null) {
+            throw new ServiceException(ResultCode.USER_NOT_EXIST);
+        }
+        loginBindUser(member);
+        //对店铺状态的判定处理
+        return checkMemberStore(member);
+    }
+
+    private Token checkMemberStore(Member member) {
         if (Boolean.TRUE.equals(member.getHaveStore())) {
             Store store = storeService.getById(member.getStoreId());
             if (!store.getStoreDisable().equals(StoreStatusEnum.OPEN.name())) {
@@ -167,8 +225,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         } else {
             throw new ServiceException(ResultCode.USER_NOT_EXIST);
         }
-
-        return storeTokenGenerate.createToken(member.getUsername(), false);
+        return storeTokenGenerate.createToken(member, false);
     }
 
     /**
@@ -180,30 +237,30 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     private Member findMember(String userName) {
         QueryWrapper<Member> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("username", userName).or().eq("mobile", userName);
-        return this.getOne(queryWrapper);
+        return this.getOne(queryWrapper, false);
     }
 
     @Override
-    public Token autoRegister(ConnectAuthUser authUser) {
+    @Transactional
+    public Member autoRegister(ConnectAuthUser authUser) {
 
         if (CharSequenceUtil.isEmpty(authUser.getNickname())) {
-            authUser.setNickname("临时昵称");
+            authUser.setNickname(CommonUtil.getSpecialStr("用户"));
         }
         if (CharSequenceUtil.isEmpty(authUser.getAvatar())) {
             authUser.setAvatar("https://i.loli.net/2020/11/19/LyN6JF7zZRskdIe.png");
         }
         try {
-            String username = UuidUtils.getUUID();
-            Member member = new Member(username, UuidUtils.getUUID(), authUser.getAvatar(), authUser.getNickname(),
-                    authUser.getGender() != null ? Convert.toInt(authUser.getGender().getCode()) : 0);
-            //保存会员
-            this.save(member);
-            Member loadMember = this.findByUsername(username);
-            //绑定登录方式
-            loginBindUser(loadMember, authUser.getUuid(), authUser.getSource());
-            return memberTokenGenerate.createToken(username, false);
+//            String username = UuidUtils.getUUID();
+            Member member = new Member(authUser.getUsername(), UuidUtils.getUUID(), authUser.getAvatar(), authUser.getNickname(),
+                    authUser.getGender() != null ? Convert.toInt(authUser.getGender().getCode()) : 0, authUser.getPhone());
+            member.setPassword(DEFAULT_PASSWORD);
+            // 发送会员注册信息
+            registerHandler(member);
+
+            return member;
         } catch (ServiceException e) {
-            log.error("自动注册服务泡出异常：", e);
+            log.error("自动注册服务抛出异常：", e);
             throw e;
         } catch (Exception e) {
             log.error("自动注册异常：", e);
@@ -211,11 +268,12 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         }
     }
 
-    @Override
-    public Token autoRegister() {
-        ConnectAuthUser connectAuthUser = this.checkConnectUser();
-        return this.autoRegister(connectAuthUser);
-    }
+//    @Override
+//    @Transactional
+//    public Token autoRegister() {
+//        ConnectAuthUser connectAuthUser = this.checkConnectUser();
+//        return this.autoRegister(connectAuthUser);
+//    }
 
     @Override
     public Token refreshToken(String refreshToken) {
@@ -228,20 +286,38 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     }
 
     @Override
+    @Transactional
     public Token mobilePhoneLogin(String mobilePhone) {
         QueryWrapper<Member> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("mobile", mobilePhone);
-        Member member = this.baseMapper.selectOne(queryWrapper);
+        Member member = this.baseMapper.selectOne(queryWrapper, false);
         //如果手机号不存在则自动注册用户
         if (member == null) {
             member = new Member(mobilePhone, UuidUtils.getUUID(), mobilePhone);
-            //保存会员
-            this.save(member);
-            String destination = rocketmqCustomProperties.getMemberTopic() + ":" + MemberTagsEnum.MEMBER_REGISTER.name();
-            rocketMQTemplate.asyncSend(destination, member, RocketmqSendCallbackBuilder.commonCallback());
+            registerHandler(member);
+        }
+        //判断用户是否有效
+        if (member.getDisabled().equals(false) || member.getDeleteFlag().equals(true)) {
+            throw new ServiceException(ResultCode.USER_STATUS_ERROR);
         }
         loginBindUser(member);
-        return memberTokenGenerate.createToken(member.getUsername(), false);
+        return memberTokenGenerate.createToken(member, false);
+    }
+
+    /**
+     * 注册方法抽象
+     *
+     * @param member
+     */
+    @Transactional
+    public void registerHandler(Member member) {
+        member.setId(SnowFlake.getIdStr());
+        //保存会员
+        this.save(member);
+        UserContext.settingInviter(member.getId(), cache);
+        // 发送会员注册信息
+        applicationEventPublisher.publishEvent(new TransactionCommitSendMQEvent("new member register", rocketmqCustomProperties.getMemberTopic(),
+                MemberTagsEnum.MEMBER_REGISTER.name(), member));
     }
 
     @Override
@@ -252,9 +328,13 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         BeanUtil.copyProperties(memberEditDTO, member);
         //修改会员
         this.updateById(member);
+        String destination = rocketmqCustomProperties.getMemberTopic() + ":" + MemberTagsEnum.MEMBER_INFO_EDIT.name();
+        //发送订单变更mq消息
+        rocketMQTemplate.asyncSend(destination, member, RocketmqSendCallbackBuilder.commonCallback());
         return member;
     }
 
+    @DemoSite
     @Override
     public Member modifyPass(String oldPassword, String newPassword) {
         AuthUser tokenUser = UserContext.getCurrentUser();
@@ -275,19 +355,71 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     }
 
     @Override
+    public boolean canInitPass() {
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser == null) {
+            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+        }
+        Member member = this.getById(tokenUser.getId());
+        return member.getPassword().equals(DEFAULT_PASSWORD);
+
+    }
+
+    @Override
+    public void initPass(String password) {
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser == null) {
+            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+        }
+        Member member = this.getById(tokenUser.getId());
+        if (member.getPassword().equals(DEFAULT_PASSWORD)) {
+            //修改会员密码
+            LambdaUpdateWrapper<Member> lambdaUpdateWrapper = Wrappers.lambdaUpdate();
+            lambdaUpdateWrapper.eq(Member::getId, member.getId());
+            lambdaUpdateWrapper.set(Member::getPassword, new BCryptPasswordEncoder().encode(password));
+            this.update(lambdaUpdateWrapper);
+        }
+        throw new ServiceException(ResultCode.UNINITIALIZED_PASSWORD);
+
+    }
+
+    @Override
+    public void cancellation() {
+
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser == null) {
+            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+        }
+        Member member = this.getById(tokenUser.getId());
+        //删除联合登录
+        connectService.deleteByMemberId(member.getId());
+        //混淆用户信息
+        this.confusionMember(member);
+    }
+
+    /**
+     * 混淆之前的会员信息
+     *
+     * @param member
+     */
+    private void confusionMember(Member member) {
+        member.setUsername(UuidUtils.getUUID());
+        member.setMobile(UuidUtils.getUUID() + member.getMobile());
+        member.setNickName("用户已注销");
+        member.setDisabled(false);
+        this.updateById(member);
+    }
+
+    @Override
+    @Transactional
     public Token register(String userName, String password, String mobilePhone) {
         //检测会员信息
         checkMember(userName, mobilePhone);
         //设置会员信息
         Member member = new Member(userName, new BCryptPasswordEncoder().encode(password), mobilePhone);
         //注册成功后用户自动登录
-        if (this.save(member)) {
-            Token token = memberTokenGenerate.createToken(member.getUsername(), false);
-            String destination = rocketmqCustomProperties.getMemberTopic() + ":" + MemberTagsEnum.MEMBER_REGISTER.name();
-            rocketMQTemplate.asyncSend(destination, member, RocketmqSendCallbackBuilder.commonCallback());
-            return token;
-        }
-        return null;
+        registerHandler(member);
+        return memberTokenGenerate.createToken(member, false);
     }
 
     @Override
@@ -307,6 +439,15 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     }
 
     @Override
+    public boolean changeMobile(String memberId, String mobile) {
+        //修改会员手机号
+        LambdaUpdateWrapper<Member> lambdaUpdateWrapper = Wrappers.lambdaUpdate();
+        lambdaUpdateWrapper.eq(Member::getId, memberId);
+        lambdaUpdateWrapper.set(Member::getMobile, mobile);
+        return this.update(lambdaUpdateWrapper);
+    }
+
+    @Override
     public boolean resetByMobile(String uuid, String password) {
         String phone = cache.get(CachePrefix.FIND_MOBILE + uuid).toString();
         //根据手机号获取会员判定是否存在此会员
@@ -315,6 +456,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
             LambdaUpdateWrapper<Member> lambdaUpdateWrapper = Wrappers.lambdaUpdate();
             lambdaUpdateWrapper.eq(Member::getMobile, phone);
             lambdaUpdateWrapper.set(Member::getPassword, new BCryptPasswordEncoder().encode(password));
+            cache.remove(CachePrefix.FIND_MOBILE + uuid);
             return this.update(lambdaUpdateWrapper);
         } else {
             throw new ServiceException(ResultCode.USER_PHONE_NOT_EXIST);
@@ -323,36 +465,31 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     }
 
     @Override
+    @Transactional
     public Member addMember(MemberAddDTO memberAddDTO) {
 
         //检测会员信息
         checkMember(memberAddDTO.getUsername(), memberAddDTO.getMobile());
 
         //添加会员
-        Member member = new Member(memberAddDTO.getUsername(), new BCryptPasswordEncoder().encode(memberAddDTO.getPassword()), memberAddDTO.getMobile());
-        this.save(member);
-        String destination = rocketmqCustomProperties.getMemberTopic() + ":" + MemberTagsEnum.MEMBER_REGISTER.name();
-        rocketMQTemplate.asyncSend(destination, member, RocketmqSendCallbackBuilder.commonCallback());
+        Member member = new Member(memberAddDTO.getUsername(), new BCryptPasswordEncoder().encode(memberAddDTO.getPassword()),
+                memberAddDTO.getMobile());
+        registerHandler(member);
         return member;
     }
 
     @Override
     public Member updateMember(ManagerMemberEditDTO managerMemberEditDTO) {
-        //判断是否用户登录并且会员ID为当前登录会员ID
-        AuthUser tokenUser = UserContext.getCurrentUser();
-        if (tokenUser == null) {
-            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
-        }
         //过滤会员昵称敏感词
-        if (com.baomidou.mybatisplus.core.toolkit.StringUtils.isNotBlank(managerMemberEditDTO.getNickName())) {
+        if (CharSequenceUtil.isNotBlank(managerMemberEditDTO.getNickName())) {
             managerMemberEditDTO.setNickName(SensitiveWordsFilter.filter(managerMemberEditDTO.getNickName()));
         }
         //如果密码不为空则加密密码
-        if (com.baomidou.mybatisplus.core.toolkit.StringUtils.isNotBlank(managerMemberEditDTO.getPassword())) {
+        if (CharSequenceUtil.isNotBlank(managerMemberEditDTO.getPassword())) {
             managerMemberEditDTO.setPassword(new BCryptPasswordEncoder().encode(managerMemberEditDTO.getPassword()));
         }
         //查询会员信息
-        Member member = this.findByUsername(managerMemberEditDTO.getUsername());
+        Member member = this.getById(managerMemberEditDTO.getId());
         //传递修改会员信息
         BeanUtil.copyProperties(managerMemberEditDTO, member);
         this.updateById(member);
@@ -377,6 +514,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
 
     @Override
     @PointLogPoint
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateMemberPoint(Long point, String type, String memberId, String content) {
         //获取当前会员信息
         Member member = this.getById(memberId);
@@ -404,8 +542,8 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
                 memberPointMessage.setPoint(point);
                 memberPointMessage.setType(type);
                 memberPointMessage.setMemberId(memberId);
-                String destination = rocketmqCustomProperties.getMemberTopic() + ":" + MemberTagsEnum.MEMBER_POINT_CHANGE.name();
-                rocketMQTemplate.asyncSend(destination, memberPointMessage, RocketmqSendCallbackBuilder.commonCallback());
+                applicationEventPublisher.publishEvent(new TransactionCommitSendMQEvent("update member point",
+                        rocketmqCustomProperties.getMemberTopic(), MemberTagsEnum.MEMBER_POINT_CHANGE.name(), memberPointMessage));
                 return true;
             }
             return false;
@@ -420,6 +558,10 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         updateWrapper.set("disabled", status);
         updateWrapper.in("id", memberIds);
 
+        //如果是禁用
+        if (Boolean.FALSE.equals(status)) {
+            disableMemberLogout(memberIds);
+        }
         return this.update(updateWrapper);
     }
 
@@ -429,10 +571,11 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
      * @param mobilePhone 手机号
      * @return 会员
      */
-    private Member findByPhone(String mobilePhone) {
+    private Long findMember(String mobilePhone, String userName) {
         QueryWrapper<Member> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("mobile", mobilePhone);
-        return this.baseMapper.selectOne(queryWrapper);
+        queryWrapper.eq("mobile", mobilePhone)
+                .or().eq("username", userName);
+        return this.baseMapper.selectCount(queryWrapper);
     }
 
     /**
@@ -448,23 +591,6 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
             return (ConnectAuthUser) context;
         }
         return null;
-    }
-
-    /**
-     * 成功登录，则检测cookie中的信息，进行会员绑定
-     *
-     * @param member  会员
-     * @param unionId unionId
-     * @param type    状态
-     */
-    private void loginBindUser(Member member, String unionId, String type) {
-        Connect connect = connectService.queryConnect(
-                ConnectQueryDTO.builder().unionId(unionId).unionType(type).build()
-        );
-        if (connect == null) {
-            connect = new Connect(member.getId(), unionId, type);
-            connectService.save(connect);
-        }
     }
 
     /**
@@ -505,42 +631,42 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     }
 
 
-    /**
-     * 检测是否可以绑定第三方联合登陆
-     * 返回null原因
-     * 包含原因1：redis中已经没有联合登陆信息  2：已绑定其他账号
-     *
-     * @return 返回对象则代表可以进行绑定第三方会员，返回null则表示联合登陆无法继续
-     */
-    private ConnectAuthUser checkConnectUser() {
-        //获取cookie存储的信息
-        String uuid = CookieUtil.getCookie(ConnectService.CONNECT_COOKIE, ThreadContextHolder.getHttpRequest());
-        String connectType = CookieUtil.getCookie(ConnectService.CONNECT_TYPE, ThreadContextHolder.getHttpRequest());
-
-        //如果联合登陆存储了信息
-        if (CharSequenceUtil.isNotEmpty(uuid) && CharSequenceUtil.isNotEmpty(connectType)) {
-            //枚举 联合登陆类型获取
-            ConnectAuthEnum authInterface = ConnectAuthEnum.valueOf(connectType);
-
-            ConnectAuthUser connectAuthUser = getConnectAuthUser(uuid, connectType);
-            if (connectAuthUser == null) {
-                throw new ServiceException(ResultCode.USER_OVERDUE_CONNECT_ERROR);
-            }
-            //检测是否已经绑定过用户
-            Connect connect = connectService.queryConnect(
-                    ConnectQueryDTO.builder().unionType(connectType).unionId(connectAuthUser.getUuid()).build()
-            );
-            //没有关联则返回true，表示可以继续绑定
-            if (connect == null) {
-                connectAuthUser.setConnectEnum(authInterface);
-                return connectAuthUser;
-            } else {
-                throw new ServiceException(ResultCode.USER_CONNECT_BANDING_ERROR);
-            }
-        } else {
-            throw new ServiceException(ResultCode.USER_CONNECT_NOT_EXIST_ERROR);
-        }
-    }
+//    /**
+//     * 检测是否可以绑定第三方联合登陆
+//     * 返回null原因
+//     * 包含原因1：redis中已经没有联合登陆信息  2：已绑定其他账号
+//     *
+//     * @return 返回对象则代表可以进行绑定第三方会员，返回null则表示联合登陆无法继续
+//     */
+//    private ConnectAuthUser checkConnectUser() {
+//        //获取cookie存储的信息
+//        String uuid = CookieUtil.getCookie(ConnectService.CONNECT_COOKIE, ThreadContextHolder.getHttpRequest());
+//        String connectType = CookieUtil.getCookie(ConnectService.CONNECT_TYPE, ThreadContextHolder.getHttpRequest());
+//
+//        //如果联合登陆存储了信息
+//        if (CharSequenceUtil.isNotEmpty(uuid) && CharSequenceUtil.isNotEmpty(connectType)) {
+//            //枚举 联合登陆类型获取
+//            ConnectAuthEnum authInterface = ConnectAuthEnum.valueOf(connectType);
+//
+//            ConnectAuthUser connectAuthUser = getConnectAuthUser(uuid, connectType);
+//            if (connectAuthUser == null) {
+//                throw new ServiceException(ResultCode.USER_OVERDUE_CONNECT_ERROR);
+//            }
+//            //检测是否已经绑定过用户
+//            Connect connect = connectService.queryConnect(
+//                    ConnectQueryDTO.builder().unionType(connectType).unionId(connectAuthUser.getUuid()).build()
+//            );
+//            //没有关联则返回true，表示可以继续绑定
+//            if (connect == null) {
+//                connectAuthUser.setConnectEnum(authInterface);
+//                return connectAuthUser;
+//            } else {
+//                throw new ServiceException(ResultCode.USER_CONNECT_BANDING_ERROR);
+//            }
+//        } else {
+//            throw new ServiceException(ResultCode.USER_CONNECT_NOT_EXIST_ERROR);
+//        }
+//    }
 
     @Override
     public long getMemberNum(MemberSearchVO memberSearchVO) {
@@ -576,9 +702,138 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
     @Override
     public void logout(UserEnums userEnums) {
         String currentUserToken = UserContext.getCurrentUserToken();
+
+        AuthUser authUser = UserContext.getAuthUser(currentUserToken);
+
         if (CharSequenceUtil.isNotEmpty(currentUserToken)) {
-            cache.remove(CachePrefix.ACCESS_TOKEN.getPrefix(userEnums) + currentUserToken);
+            cache.remove(CachePrefix.ACCESS_TOKEN.getPrefix(userEnums, authUser.getId()) + currentUserToken);
+            cache.vagueDel(CachePrefix.REFRESH_TOKEN.getPrefix(userEnums, authUser.getId()));
         }
+    }
+
+    @Override
+    public void logout(String userId) {
+
+        cache.vagueDel(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MANAGER, userId));
+        cache.vagueDel(CachePrefix.REFRESH_TOKEN.getPrefix(UserEnums.MANAGER, userId));
+    }
+
+    /**
+     * 禁用会员会员token删除
+     *
+     * @param memberIds 会员id
+     */
+    public void disableMemberLogout(List<String> memberIds) {
+        if (memberIds != null) {
+            memberIds.forEach(memberId -> {
+                cache.vagueDel(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MEMBER, memberId));
+                cache.vagueDel(CachePrefix.REFRESH_TOKEN.getPrefix(UserEnums.MEMBER, memberId));
+            });
+        }
+    }
+
+    /**
+     * 获取所有会员的手机号
+     *
+     * @return 所有会员的手机号
+     */
+    @Override
+    public List<String> getAllMemberMobile() {
+        return this.baseMapper.getAllMemberMobile();
+    }
+
+    /**
+     * 更新会员登录时间为最新时间
+     *
+     * @param memberId 会员id
+     * @return 是否更新成功
+     */
+    @Override
+    public boolean updateMemberLoginTime(String memberId) {
+        LambdaUpdateWrapper<Member> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(Member::getId, memberId);
+        updateWrapper.set(Member::getLastLoginDate, new Date());
+        return this.update(updateWrapper);
+    }
+
+    @Override
+    public MemberVO getMember(String id) {
+        return new MemberVO(this.getById(id));
+    }
+
+    @Override
+    public QRCodeLoginSessionVo createPcSession() {
+        QRCodeLoginSessionVo session = new QRCodeLoginSessionVo();
+        session.setStatus(QRCodeLoginSessionStatusEnum.WAIT_SCANNING.getCode());
+        //过期时间，20s
+        Long duration = 20 * 1000L;
+        session.setDuration(duration);
+        String token = CachePrefix.QR_CODE_LOGIN_SESSION.name() + SnowFlake.getIdStr();
+        session.setToken(token);
+        cache.put(token, session, duration, TimeUnit.MILLISECONDS);
+        return session;
+    }
+
+    @Override
+    public Object appScanner(String token) {
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser == null) {
+            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+        }
+        QRCodeLoginSessionVo session = (QRCodeLoginSessionVo) cache.get(token);
+        if (session == null) {
+            return QRCodeLoginSessionStatusEnum.NO_EXIST.getCode();
+        }
+        session.setStatus(QRCodeLoginSessionStatusEnum.SCANNING.getCode());
+        cache.put(token, session, session.getDuration(), TimeUnit.MILLISECONDS);
+        return QRCodeLoginSessionStatusEnum.SCANNING.getCode();
+    }
+
+    @Override
+    public boolean appSConfirm(String token, Integer code) {
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser == null) {
+            throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+        }
+        QRCodeLoginSessionVo session = (QRCodeLoginSessionVo) cache.get(token);
+        if (session == null) {
+            return false;
+        }
+        if (code == 1) {
+            //同意
+            session.setStatus(QRCodeLoginSessionStatusEnum.VERIFIED.getCode());
+            session.setUserId(Long.parseLong(tokenUser.getId()));
+        } else {
+            //拒绝
+            session.setStatus(QRCodeLoginSessionStatusEnum.CANCELED.getCode());
+        }
+        cache.put(token, session, session.getDuration(), TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    @Override
+    public QRLoginResultVo loginWithSession(String sessionToken) {
+        QRLoginResultVo result = new QRLoginResultVo();
+        result.setStatus(QRCodeLoginSessionStatusEnum.NO_EXIST.getCode());
+        QRCodeLoginSessionVo session = (QRCodeLoginSessionVo) cache.get(sessionToken);
+        if (session == null) {
+            return result;
+        }
+        result.setStatus(session.getStatus());
+        if (QRCodeLoginSessionStatusEnum.VERIFIED.getCode().equals(session.getStatus())) {
+            //生成token
+            Member member = this.getById(session.getUserId());
+            if (member == null) {
+                throw new ServiceException(ResultCode.USER_NOT_EXIST);
+            } else {
+                //生成token
+                Token token = memberTokenGenerate.createToken(member, false);
+                result.setToken(token);
+                cache.vagueDel(sessionToken);
+            }
+
+        }
+        return result;
     }
 
     /**
@@ -588,13 +843,10 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
      * @param mobilePhone 手机号
      */
     private void checkMember(String userName, String mobilePhone) {
-        //判断用户名是否存在
-        if (findByUsername(userName) != null) {
-            throw new ServiceException(ResultCode.USER_NAME_EXIST);
-        }
         //判断手机号是否存在
-        if (findByPhone(mobilePhone) != null) {
-            throw new ServiceException(ResultCode.USER_PHONE_EXIST);
+        if (findMember(mobilePhone, userName) > 0) {
+            throw new ServiceException(ResultCode.USER_EXIST);
         }
     }
+
 }

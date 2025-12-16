@@ -7,7 +7,6 @@ import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.utils.BeanUtil;
-import cn.lili.mybatis.util.PageUtil;
 import cn.lili.common.vo.PageVO;
 import cn.lili.modules.distribution.entity.dos.Distribution;
 import cn.lili.modules.distribution.entity.dto.DistributionApplyDTO;
@@ -21,6 +20,7 @@ import cn.lili.modules.system.entity.dos.Setting;
 import cn.lili.modules.system.entity.dto.DistributionSetting;
 import cn.lili.modules.system.entity.enums.SettingEnum;
 import cn.lili.modules.system.service.SettingService;
+import cn.lili.mybatis.util.PageUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -38,7 +38,6 @@ import java.util.concurrent.TimeUnit;
  * @since 2020-03-14 23:04:56
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class DistributionServiceImpl extends ServiceImpl<DistributionMapper, Distribution> implements DistributionService {
 
     /**
@@ -70,6 +69,7 @@ public class DistributionServiceImpl extends ServiceImpl<DistributionMapper, Dis
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Distribution applyDistribution(DistributionApplyDTO distributionApplyDTO) {
 
         //检查分销开关
@@ -80,23 +80,25 @@ public class DistributionServiceImpl extends ServiceImpl<DistributionMapper, Dis
 
         //如果分销员非空并未审核则提示用户请等待，如果分销员为拒绝状态则重新提交申请
         if (Optional.ofNullable(distribution).isPresent()) {
-            if (distribution.getDistributionStatus().equals(DistributionStatusEnum.APPLY.name())) {
-                throw new ServiceException(ResultCode.DISTRIBUTION_IS_APPLY);
-            } else if (distribution.getDistributionStatus().equals(DistributionStatusEnum.REFUSE.name())) {
-                distribution.setDistributionStatus(DistributionStatusEnum.APPLY.name());
-                BeanUtil.copyProperties(distributionApplyDTO, distribution);
-                this.updateById(distribution);
-                return distribution;
+            switch (DistributionStatusEnum.valueOf(distribution.getDistributionStatus())) {
+                case REFUSE:
+                case RETREAT:
+                    distribution.setDistributionStatus(DistributionStatusEnum.APPLY.name());
+                    BeanUtil.copyProperties(distributionApplyDTO, distribution);
+                    this.updateById(distribution);
+                    return distribution;
+                default:
+                    throw new ServiceException(ResultCode.DISTRIBUTION_IS_APPLY);
             }
+        } else {
+            //如果未申请分销员则新增进行申请
+            //获取当前登录用户
+            Member member = memberService.getUserInfo();
+            //新建分销员
+            distribution = new Distribution(member.getId(), member.getNickName(), distributionApplyDTO);
+            //添加分销员
+            this.save(distribution);
         }
-        //如果未申请分销员则新增进行申请
-        //获取当前登录用户
-        Member member = memberService.getUserInfo();
-        //新建分销员
-        distribution = new Distribution(member.getId(), member.getNickName(), distributionApplyDTO);
-        //添加分销员
-        this.save(distribution);
-
         return distribution;
     }
 
@@ -174,19 +176,35 @@ public class DistributionServiceImpl extends ServiceImpl<DistributionMapper, Dis
         //获取分销是否开启
         Setting setting = settingService.get(SettingEnum.DISTRIBUTION_SETTING.name());
         DistributionSetting distributionSetting = JSONUtil.toBean(setting.getSettingValue(), DistributionSetting.class);
-        if (!distributionSetting.getIsOpen()) {
+        if (Boolean.FALSE.equals(distributionSetting.getIsOpen())) {
             throw new ServiceException(ResultCode.DISTRIBUTION_CLOSE);
         }
     }
 
+
     @Override
-    public void subCanRebate(Double canRebate, String distributionId) {
-        this.baseMapper.subCanRebate(canRebate, distributionId);
+    public void subRebate(Double canRebate, String distributionId, Double distributionOrderPrice) {
+        this.baseMapper.subRebate(canRebate, distributionId, distributionOrderPrice);
     }
 
     @Override
-    public void addRebate(Double rebate, String distributionId) {
+    public void addRebate(Double rebate, String distributionId, Double distributionOrderPrice) {
+        this.baseMapper.addRebate(rebate, distributionId, distributionOrderPrice);
+    }
+
+    @Override
+    public void addCanRebate(Double rebate, String distributionId) {
         this.baseMapper.addCanRebate(rebate, distributionId);
+    }
+
+    @Override
+    public void addCashRebate(Double rebate, String distributionId) {
+        this.baseMapper.addCashRebate(rebate, distributionId);
+    }
+
+    @Override
+    public void subCashRebate(Double rebate, String distributionId) {
+        this.baseMapper.subCashRebate(rebate, distributionId);
     }
 
 }

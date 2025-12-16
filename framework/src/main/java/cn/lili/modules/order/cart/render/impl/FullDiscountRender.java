@@ -1,5 +1,7 @@
 package cn.lili.modules.order.cart.render.impl;
 
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.common.utils.CurrencyUtil;
 import cn.lili.modules.goods.entity.dos.GoodsSku;
@@ -11,8 +13,10 @@ import cn.lili.modules.order.cart.entity.vo.CartVO;
 import cn.lili.modules.order.cart.entity.vo.FullDiscountVO;
 import cn.lili.modules.order.cart.render.CartRenderStep;
 import cn.lili.modules.order.cart.render.util.PromotionPriceUtil;
+import cn.lili.modules.order.order.entity.dto.DiscountPriceItem;
 import cn.lili.modules.order.order.entity.dto.PriceDetailDTO;
 import cn.lili.modules.promotion.entity.dos.FullDiscount;
+import cn.lili.modules.promotion.entity.enums.PromotionsScopeTypeEnum;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -20,16 +24,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * FullDiscountRender
+ * 满减优惠渲染
  *
  * @author Chopper
  * @since 2020-04-01 10:27 上午
  */
 @Service
 public class FullDiscountRender implements CartRenderStep {
-
-    @Autowired
-    private PromotionPriceUtil promotionPriceUtil;
 
     @Autowired
     private GoodsSkuService goodsSkuService;
@@ -48,14 +49,15 @@ public class FullDiscountRender implements CartRenderStep {
         //循环店铺购物车
         for (CartVO cart : cartList) {
             List<CartSkuVO> fullDiscountSkuList = cart.getSkuList().stream()
-                    .filter(i -> i.getPromotionMap().keySet().stream().anyMatch(j -> j.contains(PromotionTypeEnum.FULL_DISCOUNT.name())))
+                    .filter(i -> i.getPromotionMap() != null && !i.getPromotionMap().isEmpty() && i.getPromotionMap().keySet().stream().anyMatch(j -> j.contains(PromotionTypeEnum.FULL_DISCOUNT.name())))
                     .collect(Collectors.toList());
 
             if (!fullDiscountSkuList.isEmpty()) {
                 Optional<Map.Entry<String, Object>> fullDiscountOptional = fullDiscountSkuList.get(0).getPromotionMap().entrySet().stream().filter(i -> i.getKey().contains(PromotionTypeEnum.FULL_DISCOUNT.name())).findFirst();
 
                 if (fullDiscountOptional.isPresent()) {
-                    FullDiscount fullDiscount = (FullDiscount) fullDiscountOptional.get().getValue();
+                    JSONObject promotionsObj = JSONUtil.parseObj(fullDiscountOptional.get().getValue());
+                    FullDiscount fullDiscount = promotionsObj.toBean(FullDiscount.class);
                     FullDiscountVO fullDiscountVO = new FullDiscountVO(fullDiscount);
 
                     //如果有赠品，则将赠品信息写入
@@ -69,6 +71,9 @@ public class FullDiscountRender implements CartRenderStep {
                     cart.setFullDiscount(fullDiscountVO);
                     Map<String, Double> skuPriceDetail = new HashMap<>(16);
                     for (CartSkuVO cartSkuVO : cart.getSkuList()) {
+                        if (PromotionsScopeTypeEnum.PORTION_GOODS.name().equals(fullDiscountVO.getScopeType()) && fullDiscountVO.getScopeId() != null && !fullDiscountVO.getScopeId().contains(cartSkuVO.getGoodsSku().getId())) {
+                            continue;
+                        }
                         skuPriceDetail.put(cartSkuVO.getGoodsSku().getId(), cartSkuVO.getPriceDetailDTO().getGoodsPrice());
                     }
                     if (!skuPriceDetail.isEmpty()) {
@@ -81,11 +86,11 @@ public class FullDiscountRender implements CartRenderStep {
                         if (isFull(countPrice, cart)) {
                             //如果减现金
                             if (Boolean.TRUE.equals(fullDiscount.getFullMinusFlag())) {
-                                promotionPriceUtil.recountPrice(tradeDTO, skuPriceDetail, fullDiscount.getFullMinus(), PromotionTypeEnum.FULL_DISCOUNT);
+                                PromotionPriceUtil.recountPrice(tradeDTO, skuPriceDetail, fullDiscount.getFullMinus(), PromotionTypeEnum.FULL_DISCOUNT, fullDiscountVO.getId());
                             }
                             //打折
                             else if (Boolean.TRUE.equals(fullDiscount.getFullRateFlag())) {
-                                this.renderFullRate(cart, skuPriceDetail, CurrencyUtil.div(fullDiscount.getFullRate(), 10));
+                                this.renderFullRate(cart, skuPriceDetail, CurrencyUtil.div(fullDiscount.getFullRate(), 10), fullDiscountVO.getId());
                             }
                             //渲染满优惠
                             renderFullMinus(cart);
@@ -104,7 +109,7 @@ public class FullDiscountRender implements CartRenderStep {
      * @param cart
      * @param skuPriceDetail
      */
-    private void renderFullRate(CartVO cart, Map<String, Double> skuPriceDetail, Double rate) {
+    private void renderFullRate(CartVO cart, Map<String, Double> skuPriceDetail, Double rate, String activityId) {
 
         List<CartSkuVO> cartSkuVOS = cart.getCheckedSkuList().stream().filter(cartSkuVO -> skuPriceDetail.containsKey(cartSkuVO.getGoodsSku().getId())).collect(Collectors.toList());
 
@@ -112,14 +117,25 @@ public class FullDiscountRender implements CartRenderStep {
         cartSkuVOS.forEach(cartSkuVO -> {
             PriceDetailDTO priceDetailDTO = cartSkuVO.getPriceDetailDTO();
 
+
+            Double discountPrice = CurrencyUtil.mul(priceDetailDTO.getGoodsPrice(),
+                    CurrencyUtil.sub(1, rate)
+            );
             //优惠金额=旧的优惠金额+商品金额*商品折扣比例
             priceDetailDTO.setDiscountPrice(
-                    CurrencyUtil.add(priceDetailDTO.getDiscountPrice(),
-                            CurrencyUtil.mul(priceDetailDTO.getGoodsPrice(),
-                                    CurrencyUtil.sub(1, rate)
-                            )
+                    CurrencyUtil.add(priceDetailDTO.getDiscountPrice(), discountPrice
                     )
             );
+            //优惠金额=旧的优惠金额+商品金额*商品折扣比例
+            priceDetailDTO.addDiscountPriceItem(DiscountPriceItem
+                    .builder()
+                    .discountPrice(discountPrice)
+                    .promotionTypeEnum(PromotionTypeEnum.FULL_DISCOUNT)
+                    .promotionId(activityId)
+                    .skuId(cartSkuVO.getGoodsSku().getId())
+                    .goodsId(cartSkuVO.getGoodsSku().getGoodsId())
+
+                    .build());
 
         });
 

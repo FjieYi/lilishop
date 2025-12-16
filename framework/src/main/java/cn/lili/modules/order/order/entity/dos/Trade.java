@@ -1,9 +1,10 @@
 package cn.lili.modules.order.order.entity.dos;
 
-import cn.lili.mybatis.BaseEntity;
 import cn.lili.common.utils.BeanUtil;
-import cn.lili.modules.order.cart.entity.enums.DeliveryMethodEnum;
 import cn.lili.modules.order.cart.entity.dto.TradeDTO;
+import cn.lili.modules.order.cart.entity.enums.DeliveryMethodEnum;
+import cn.lili.modules.order.order.entity.enums.PayStatusEnum;
+import cn.lili.mybatis.BaseEntity;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -34,6 +35,9 @@ public class Trade extends BaseEntity {
     @ApiModelProperty(value = "买家用户名")
     private String memberName;
 
+    /**
+     * @see PayStatusEnum
+     */
     @ApiModelProperty(value = "支付方式")
     private String paymentMethod;
 
@@ -82,6 +86,7 @@ public class Trade extends BaseEntity {
         }
         BeanUtil.copyProperties(tradeDTO, this);
         BeanUtil.copyProperties(tradeDTO.getPriceDetailDTO(), this);
+        this.setPayStatus(PayStatusEnum.UNPAID.name());
         this.setId(originId);
     }
 }

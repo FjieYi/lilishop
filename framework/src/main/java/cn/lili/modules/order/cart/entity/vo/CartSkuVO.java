@@ -1,16 +1,17 @@
 package cn.lili.modules.order.cart.entity.vo;
 
+import cn.lili.common.utils.CurrencyUtil;
 import cn.lili.modules.distribution.entity.dos.DistributionGoods;
 import cn.lili.modules.goods.entity.dos.GoodsSku;
 import cn.lili.modules.order.cart.entity.enums.CartTypeEnum;
-import cn.lili.modules.promotion.entity.dos.PromotionGoods;
+import cn.lili.modules.order.cart.entity.enums.DeliveryMethodEnum;
+import cn.lili.modules.promotion.tools.PromotionTools;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,6 +22,7 @@ import java.util.Map;
  */
 @Data
 @NoArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 public class CartSkuVO extends CartBase implements Serializable {
 
 
@@ -80,12 +82,6 @@ public class CartSkuVO extends CartBase implements Serializable {
     @ApiModelProperty(value = "积分购买 积分数量")
     private Long point;
 
-    @ApiModelProperty(value = "可参与的单品活动")
-    private List<PromotionGoods> promotions;
-
-    @ApiModelProperty(value = "参与促销活动更新时间(一天更新一次) 例如时间为：2020-01-01  00：00：01")
-    private Date updatePromotionTime;
-
     @ApiModelProperty("商品促销活动集合，key 为 促销活动类型，value 为 促销活动实体信息 ")
     private Map<String, Object> promotionMap;
 
@@ -96,14 +92,22 @@ public class CartSkuVO extends CartBase implements Serializable {
     private CartTypeEnum cartType;
 
     /**
+     * @see DeliveryMethodEnum
+     */
+    @ApiModelProperty(value = "配送方式")
+    private String deliveryMethod;
+
+    /**
      * 在构造器里初始化促销列表，规格列表
      */
     public CartSkuVO(GoodsSku goodsSku) {
         this.goodsSku = goodsSku;
+        if (goodsSku.getUpdateTime() == null) {
+            this.goodsSku.setUpdateTime(goodsSku.getCreateTime());
+        }
         this.checked = true;
         this.invalid = false;
         //默认时间为0，让系统为此商品更新缓存
-        this.updatePromotionTime = new Date(0);
         this.errorMessage = "";
         this.isShip = true;
         this.purchasePrice = goodsSku.getPromotionFlag() != null && goodsSku.getPromotionFlag() ? goodsSku.getPromotionPrice() : goodsSku.getPrice();
@@ -121,5 +125,25 @@ public class CartSkuVO extends CartBase implements Serializable {
         if (promotionMap != null && !promotionMap.isEmpty()) {
             this.promotionMap = promotionMap;
         }
+    }
+
+    public void rebuildBySku(GoodsSku goodsSku) {
+        this.goodsSku = goodsSku;
+        this.purchasePrice = goodsSku.getPromotionFlag() != null && goodsSku.getPromotionFlag() ? goodsSku.getPromotionPrice() : goodsSku.getPrice();
+        this.utilPrice = goodsSku.getPromotionFlag() != null && goodsSku.getPromotionFlag() ? goodsSku.getPromotionPrice() : goodsSku.getPrice();
+
+
+        //计算购物车小计
+        this.subTotal = CurrencyUtil.mul(this.getPurchasePrice(), this.getNum());
+        this.setStoreId(goodsSku.getStoreId());
+        this.setStoreName(goodsSku.getStoreName());
+    }
+
+    public Map<String, Object> getPromotionMap() {
+        return PromotionTools.filterInvalidPromotionsMap(this.promotionMap);
+    }
+
+    public Map<String, Object> getNotFilterPromotionMap() {
+        return this.promotionMap;
     }
 }

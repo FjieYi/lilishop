@@ -5,6 +5,7 @@ import cn.lili.modules.goods.entity.dto.GoodsOperationDTO;
 import cn.lili.modules.goods.entity.dto.GoodsSearchParams;
 import cn.lili.modules.goods.entity.enums.GoodsAuthEnum;
 import cn.lili.modules.goods.entity.enums.GoodsStatusEnum;
+import cn.lili.modules.goods.entity.vos.GoodsNumVO;
 import cn.lili.modules.goods.entity.vos.GoodsVO;
 import cn.lili.modules.store.entity.dos.Store;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -83,6 +84,14 @@ public interface GoodsService extends IService<Goods> {
      */
     IPage<Goods> queryByParams(GoodsSearchParams goodsSearchParams);
 
+    /**
+     * 获取商品数量
+     *
+     * @param goodsSearchParams 查询参数
+     * @return 商品数量
+     */
+    GoodsNumVO getGoodsNumVO(GoodsSearchParams goodsSearchParams);
+
 
     /**
      * 商品查询
@@ -111,6 +120,17 @@ public interface GoodsService extends IService<Goods> {
      * @return 更新结果
      */
     Boolean updateGoodsMarketAble(List<String> goodsIds, GoodsStatusEnum goodsStatusEnum, String underReason);
+
+
+    /**
+     * 更新商品上架状态状态
+     *
+     * @param storeId        店铺ID
+     * @param goodsStatusEnum 更新的商品状态
+     * @param underReason     下架原因
+     * @return 更新结果
+     */
+    Boolean updateGoodsMarketAbleByStoreId(String storeId, GoodsStatusEnum goodsStatusEnum, String underReason);
 
     /**
      * 更新商品上架状态状态
@@ -142,16 +162,24 @@ public interface GoodsService extends IService<Goods> {
      * 修改商品库存数量
      *
      * @param goodsId  商品ID
-     * @param quantity 库存数量
      */
-    void updateStock(String goodsId, Integer quantity);
+    void updateStock(String goodsId);
 
     /**
-     * 更新SKU评价数量
+     * 更新商品评价数量
      *
      * @param goodsId 商品ID
+     * @param skuId skuID
      */
-    void updateGoodsCommentNum(String goodsId);
+    void updateGoodsCommentNum(String goodsId, String skuId);
+
+    /**
+     * 更新商品的购买数量
+     *
+     * @param goodsId  商品ID
+     * @param buyCount 购买数量
+     */
+    void updateGoodsBuyCount(String goodsId, int buyCount);
 
     /**
      * 批量更新商品的店铺信息
@@ -165,4 +193,18 @@ public interface GoodsService extends IService<Goods> {
      */
     long countStoreGoodsNum(String storeId);
 
+    /**
+     * 同步商品分类名称
+     *
+     * @param categoryId 分类ID
+     */
+    void categoryGoodsName(String categoryId);
+
+    /**
+     * 添加商品评价数量
+     *
+     * @param commentNum 评价数量
+     * @param goodsId    商品ID
+     */
+    void addGoodsCommentNum(Integer commentNum, String goodsId);
 }

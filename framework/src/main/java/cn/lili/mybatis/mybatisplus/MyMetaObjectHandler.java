@@ -22,14 +22,19 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
         AuthUser authUser = UserContext.getCurrentUser();
         if (authUser != null) {
             this.setFieldValByName("createBy", authUser.getUsername(), metaObject);
-        }else{
+        } else {
 
             this.setFieldValByName("createBy", "SYSTEM", metaObject);
         }
-        this.setFieldValByName("createTime", new Date(), metaObject);
+        //有创建时间字段，切字段值为空
+        if (metaObject.hasGetter("createTime")) {
+            this.setFieldValByName("createTime", new Date(), metaObject);
+        }
         //有值，则写入
         if (metaObject.hasGetter("deleteFlag")) {
-            this.setFieldValByName("deleteFlag", false, metaObject);
+            if (metaObject.getValue("deleteFlag") == null) {
+                this.setFieldValByName("deleteFlag", false, metaObject);
+            }
         }
         if (metaObject.hasGetter("id")) {
             //如果已经配置id，则不再写入

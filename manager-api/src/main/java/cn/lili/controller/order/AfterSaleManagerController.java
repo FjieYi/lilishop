@@ -1,8 +1,10 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.order.aftersale.entity.dos.AfterSale;
+import cn.lili.modules.order.aftersale.entity.vo.AfterSaleNumVO;
 import cn.lili.modules.order.aftersale.entity.vo.AfterSaleSearchParams;
 import cn.lili.modules.order.aftersale.entity.vo.AfterSaleVO;
 import cn.lili.modules.order.aftersale.service.AfterSaleService;
@@ -26,7 +28,7 @@ import java.util.List;
  * @since 2021/1/6 14:11
  */
 @RestController
-@RequestMapping("/manager/afterSale")
+@RequestMapping("/manager/order/afterSale")
 @Api(tags = "管理端,售后接口")
 public class AfterSaleManagerController {
 
@@ -40,6 +42,12 @@ public class AfterSaleManagerController {
     @GetMapping(value = "/page")
     public ResultMessage<IPage<AfterSaleVO>> getByPage(AfterSaleSearchParams searchParams) {
         return ResultUtil.data(afterSaleService.getAfterSalePages(searchParams));
+    }
+
+    @ApiOperation(value = "获取售后数量")
+    @GetMapping(value = "/afterSaleNumVO")
+    public ResultMessage<AfterSaleNumVO> getAfterSaleNumVO(AfterSaleSearchParams afterSaleSearchParams) {
+        return ResultUtil.data(afterSaleService.getAfterSaleNumVO(afterSaleSearchParams));
     }
 
     @ApiOperation(value = "获取导出售后服务列表列表")
@@ -62,6 +70,7 @@ public class AfterSaleManagerController {
         return ResultUtil.data(afterSaleService.deliveryTraces(sn));
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "售后线下退款")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "afterSaleSn", value = "售后sn", required = true, paramType = "path"),
@@ -74,6 +83,7 @@ public class AfterSaleManagerController {
         return ResultUtil.data(afterSaleService.refund(afterSaleSn, remark));
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "审核售后申请")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "afterSaleSn", value = "售后sn", required = true, paramType = "path"),

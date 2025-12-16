@@ -21,7 +21,6 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,7 +34,6 @@ import java.util.Map;
  */
 @Service
 @Slf4j
-@Transactional(rollbackFor = Exception.class)
 public class WechatMessageServiceImpl extends ServiceImpl<WechatMessageMapper, WechatMessage> implements WechatMessageService {
 
     @Autowired
@@ -89,14 +87,14 @@ public class WechatMessageServiceImpl extends ServiceImpl<WechatMessageMapper, W
                     oldList.add(JSONUtil.parseObj(item).getStr("template_id"));
                 });
             }
-            if (oldList.size() != 0) {
+/*            if (oldList.size() != 0) {
                 oldList.forEach(templateId -> {
                     Map<String, Object> params = new HashMap<>(1);
                     params.put("template_id", templateId);
-                    String message = WechatMessageUtil.wechatHandler(HttpUtil.post(delMsgTpl + accessToken, params));
+                    String message = WechatMessageUtil.wechatHandler(HttpUtils.doPostWithJson(delMsgTpl + accessToken, params));
                     log.info("删除模版请求:{},删除模版响应：{}", params, message);
                 });
-            }
+            }*/
 
             //加入数据
             List<WechatMessageData> tmpList = initData();
@@ -140,13 +138,13 @@ public class WechatMessageServiceImpl extends ServiceImpl<WechatMessageMapper, W
         List<WechatMessageData> msg = new ArrayList<>();
         //新订单消息提示
         msg.add(new WechatMessageData(
-                "待支付",
-                "您有新订单需要支付",
+                "订单支付成功通知",
+                "订单支付成功通知",
                 "如有问题，请联系在线客服",
                 "OPENTM207498902",
                 WechatMessageItemEnums.MEMBER_NAME.name() + "," + WechatMessageItemEnums.ORDER_SN.name() + "," +
                         WechatMessageItemEnums.PRICE.name() + "," + WechatMessageItemEnums.GOODS_INFO.name(),
-                OrderStatusEnum.UNPAID));
+                OrderStatusEnum.UNDELIVERED));
         //已发货
         msg.add(new WechatMessageData(
                 "订单发货",

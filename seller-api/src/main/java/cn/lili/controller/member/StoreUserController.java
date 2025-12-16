@@ -8,6 +8,8 @@ import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.member.entity.dos.Member;
 import cn.lili.modules.member.service.MemberService;
+import cn.lili.modules.store.entity.dos.Store;
+import cn.lili.modules.store.service.StoreService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,10 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @Api(tags = "店铺端,管理员接口")
-@RequestMapping("/store/user")
+@RequestMapping("/store/member/user")
 public class StoreUserController {
     @Autowired
     private MemberService memberService;
+
+    @Autowired
+    private StoreService storeService;
 
 
     @GetMapping(value = "/info")
@@ -38,6 +43,17 @@ public class StoreUserController {
             Member member = memberService.findByUsername(tokenUser.getUsername());
             member.setPassword(null);
             return ResultUtil.data(member);
+        }
+        throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+    }
+
+    @GetMapping(value = "")
+    @ApiOperation(value = "获取当前登录店铺接口")
+    public ResultMessage<Store> getStoreInfo() {
+        AuthUser tokenUser = UserContext.getCurrentUser();
+        if (tokenUser != null) {
+            Store store = storeService.getById(tokenUser.getStoreId());
+            return ResultUtil.data(store);
         }
         throw new ServiceException(ResultCode.USER_NOT_LOGIN);
     }

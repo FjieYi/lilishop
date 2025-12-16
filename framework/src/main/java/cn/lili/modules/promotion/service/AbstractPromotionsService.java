@@ -2,8 +2,8 @@ package cn.lili.modules.promotion.service;
 
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.common.vo.PageVO;
-import cn.lili.modules.promotion.entity.dto.BasePromotions;
-import cn.lili.modules.promotion.entity.vos.BasePromotionsSearchParams;
+import cn.lili.modules.promotion.entity.dos.BasePromotions;
+import cn.lili.modules.promotion.entity.dto.search.BasePromotionsSearchParams;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 
@@ -110,8 +110,9 @@ public interface AbstractPromotionsService<T extends BasePromotions> extends ISe
      * 更新促销商品信息
      *
      * @param promotions 促销实体
+     * @return
      */
-    void updatePromotionsGoods(T promotions);
+    boolean updatePromotionsGoods(T promotions);
 
     /**
      * 更新促销信息到商品索引
@@ -121,10 +122,24 @@ public interface AbstractPromotionsService<T extends BasePromotions> extends ISe
     void updateEsGoodsIndex(T promotions);
 
     /**
+     * 发送更新商品索引消息
+     *
+     * @param promotions 促销实体
+     */
+    void sendUpdateEsGoodsMsg(T promotions);
+
+    /**
      * 当前促销类型
      *
      * @return 当前促销类型
      */
     PromotionTypeEnum getPromotionType();
+
+    /**
+     * 是否允许同一时间内存在相同的促销
+     *
+     * @return 是否允许同一时间内存在相同的促销
+     */
+    boolean allowExistSame();
 
 }

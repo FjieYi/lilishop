@@ -1,7 +1,10 @@
 package cn.lili.modules.order.cart.render.impl;
 
 import cn.hutool.core.text.CharSequenceUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.PromotionTypeEnum;
+import cn.lili.common.utils.CurrencyUtil;
 import cn.lili.modules.goods.service.CategoryService;
 import cn.lili.modules.order.cart.entity.dto.TradeDTO;
 import cn.lili.modules.order.cart.entity.enums.CartTypeEnum;
@@ -64,24 +67,26 @@ public class CommissionRender implements CartRenderStep {
                 String categoryId = cartSkuVO.getGoodsSku().getCategoryPath()
                         .substring(cartSkuVO.getGoodsSku().getCategoryPath().lastIndexOf(",") + 1);
                 if (CharSequenceUtil.isNotEmpty(categoryId)) {
-                    Double commissionRate = categoryService.getById(categoryId).getCommissionRate();
+                    Double commissionRate = categoryService.getCategoryById(categoryId).getCommissionRate();
                     priceDetailDTO.setPlatFormCommissionPoint(commissionRate);
                 }
 
                 //如果积分订单 积分订单，单独操作订单结算金额和商家结算字段
-                if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.POINTS)) {
+                if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.POINTS) && tradeDTO.getSkuList().get(0).getPromotionMap() != null && !tradeDTO.getSkuList().get(0).getPromotionMap().isEmpty()) {
                     Optional<Map.Entry<String, Object>> pointsPromotions = tradeDTO.getSkuList().get(0).getPromotionMap().entrySet().stream().filter(i -> i.getKey().contains(PromotionTypeEnum.POINTS_GOODS.name())).findFirst();
                     if (pointsPromotions.isPresent()) {
-                        PointsGoods pointsGoods = (PointsGoods) pointsPromotions.get().getValue();
+                        JSONObject promotionsObj = JSONUtil.parseObj(pointsPromotions.get().getValue());
+                        PointsGoods pointsGoods = JSONUtil.toBean(promotionsObj, PointsGoods.class);
                         priceDetailDTO.setSettlementPrice(pointsGoods.getSettlementPrice());
                     }
                 }
                 //如果砍价订单 计算金额，单独操作订单结算金额和商家结算字段
-                else if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.KANJIA)) {
+                else if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.KANJIA) && tradeDTO.getSkuList().get(0).getPromotionMap() != null && !tradeDTO.getSkuList().get(0).getPromotionMap().isEmpty()) {
                     Optional<Map.Entry<String, Object>> kanjiaPromotions = tradeDTO.getSkuList().get(0).getPromotionMap().entrySet().stream().filter(i -> i.getKey().contains(PromotionTypeEnum.KANJIA.name())).findFirst();
                     if (kanjiaPromotions.isPresent()) {
-                        KanjiaActivityGoods kanjiaActivityGoods = (KanjiaActivityGoods) kanjiaPromotions.get().getValue();
-                        priceDetailDTO.setSettlementPrice(kanjiaActivityGoods.getSettlementPrice());
+                        JSONObject promotionsObj = JSONUtil.parseObj(kanjiaPromotions.get().getValue());
+                        KanjiaActivityGoods kanjiaActivityGoods = JSONUtil.toBean(promotionsObj, KanjiaActivityGoods.class);
+                        priceDetailDTO.setSettlementPrice(CurrencyUtil.add(kanjiaActivityGoods.getSettlementPrice(),priceDetailDTO.getBillPrice()));
                     }
                 }
             }

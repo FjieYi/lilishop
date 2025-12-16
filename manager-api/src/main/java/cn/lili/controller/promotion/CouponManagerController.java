@@ -9,10 +9,13 @@ import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.promotion.entity.dos.Coupon;
 import cn.lili.modules.promotion.entity.dos.MemberCoupon;
-import cn.lili.modules.promotion.entity.vos.CouponSearchParams;
+import cn.lili.modules.promotion.entity.dto.search.CouponSearchParams;
+import cn.lili.modules.promotion.entity.dto.search.MemberCouponSearchParams;
 import cn.lili.modules.promotion.entity.vos.CouponVO;
+import cn.lili.modules.promotion.entity.vos.MemberCouponVO;
 import cn.lili.modules.promotion.service.CouponService;
 import cn.lili.modules.promotion.service.MemberCouponService;
+import cn.lili.modules.promotion.tools.PromotionTools;
 import cn.lili.mybatis.util.PageUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 管理端,优惠券接口
@@ -42,7 +46,9 @@ public class CouponManagerController {
     @ApiOperation(value = "获取优惠券列表")
     @GetMapping
     public ResultMessage<IPage<CouponVO>> getCouponList(CouponSearchParams queryParam, PageVO page) {
-        queryParam.setStoreId("platform");
+        if (queryParam.getStoreId() == null) {
+            queryParam.setStoreId(PromotionTools.PLATFORM_ID);
+        }
         return ResultUtil.data(couponService.pageVOFindAll(queryParam, page));
     }
 
@@ -90,7 +96,8 @@ public class CouponManagerController {
     @ApiOperation(value = "会员优惠券作废")
     @PutMapping(value = "/member/cancellation/{id}")
     public ResultMessage<Object> cancellation(@PathVariable String id) {
-        memberCouponService.cancellation(id);
+        AuthUser currentUser =  Objects.requireNonNull(UserContext.getCurrentUser());
+        memberCouponService.cancellation(currentUser.getId(), id);
         return ResultUtil.success(ResultCode.COUPON_CANCELLATION_SUCCESS);
     }
 
@@ -106,13 +113,21 @@ public class CouponManagerController {
 
     }
 
+    @ApiOperation(value = "获取优惠券领取详情")
+    @GetMapping(value = "/received")
+    public ResultMessage<IPage<MemberCouponVO>> getReceiveByPage(MemberCouponSearchParams searchParams,
+                                                                 PageVO page) {
+        IPage<MemberCouponVO> result = memberCouponService.getMemberCouponsPage(PageUtil.initPage(page), searchParams);
+        return ResultUtil.data(result);
+    }
+
     private void setStoreInfo(CouponVO couponVO) {
         AuthUser currentUser = UserContext.getCurrentUser();
         if (currentUser == null) {
             throw new ServiceException(ResultCode.USER_NOT_EXIST);
         }
-        couponVO.setStoreId("platform");
-        couponVO.setStoreName("platform");
+        couponVO.setStoreId(PromotionTools.PLATFORM_ID);
+        couponVO.setStoreName(PromotionTools.PLATFORM_NAME);
     }
 
 }

@@ -6,13 +6,13 @@ import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.common.vo.SearchVO;
 import cn.lili.modules.verification.entity.dos.VerificationSource;
+import cn.lili.modules.verification.service.VerificationService;
 import cn.lili.modules.verification.service.VerificationSourceService;
 import cn.lili.mybatis.util.PageUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,12 +26,14 @@ import java.util.List;
  */
 @RestController
 @Api(tags = "管理端,验证码资源维护接口")
-@RequestMapping("/manager/verificationSource")
-@Transactional(rollbackFor = Exception.class)
+@RequestMapping("/manager/other/verificationSource")
 public class VerificationSourceController {
 
     @Autowired
     private VerificationSourceService verificationSourceService;
+
+    @Autowired
+    private VerificationService verificationService;
 
     @GetMapping(value = "/{id}")
     @ApiOperation(value = "查看验证码资源维护详情")
@@ -55,6 +57,7 @@ public class VerificationSourceController {
     @DemoSite
     public ResultMessage<VerificationSource> save(VerificationSource verificationSource) {
 
+        verificationService.checkCreateVerification(verificationSource.getType(), verificationSource.getResource());
         verificationSourceService.save(verificationSource);
         verificationSourceService.initCache();
         return ResultUtil.data(verificationSource);
@@ -65,6 +68,7 @@ public class VerificationSourceController {
     @DemoSite
     public ResultMessage<VerificationSource> update(@PathVariable String id, VerificationSource verificationSource) {
         verificationSource.setId(id);
+        verificationService.checkCreateVerification(verificationSource.getType(), verificationSource.getResource());
         verificationSourceService.updateById(verificationSource);
         verificationSourceService.initCache();
         return ResultUtil.data(verificationSource);

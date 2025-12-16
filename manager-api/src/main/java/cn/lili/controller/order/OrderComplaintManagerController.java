@@ -1,5 +1,6 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
@@ -22,6 +23,8 @@ import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Objects;
+
 /**
  * 管理端,交易投诉接口
  *
@@ -30,7 +33,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @Api(tags = "管理端,交易投诉接口")
-@RequestMapping("/manager/complain")
+@RequestMapping("/manager/order/complain")
 public class OrderComplaintManagerController {
 
     /**
@@ -73,12 +76,13 @@ public class OrderComplaintManagerController {
     })
     @PostMapping("/communication")
     public ResultMessage<OrderComplaintCommunicationVO> addCommunication(@RequestParam String complainId, @RequestParam String content) {
-        AuthUser currentUser = UserContext.getCurrentUser();
-        OrderComplaintCommunicationVO communicationVO = new OrderComplaintCommunicationVO(complainId, content, CommunicationOwnerEnum.PLATFORM.name(), currentUser.getId(), currentUser.getUsername());
+        AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
+        OrderComplaintCommunicationVO communicationVO = new OrderComplaintCommunicationVO(complainId, content, CommunicationOwnerEnum.PLATFORM.name(), currentUser.getUsername(), currentUser.getId());
         orderComplaintCommunicationService.addCommunication(communicationVO);
         return ResultUtil.data(communicationVO);
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "修改状态")
     @PutMapping(value = "/status")
     public ResultMessage<Object> updateStatus(OrderComplaintOperationParams orderComplainVO) {
@@ -87,6 +91,7 @@ public class OrderComplaintManagerController {
     }
 
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "仲裁")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "id", value = "投诉单ID", required = true, paramType = "path"),

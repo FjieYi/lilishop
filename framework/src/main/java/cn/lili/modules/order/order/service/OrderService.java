@@ -3,10 +3,11 @@ package cn.lili.modules.order.order.service;
 import cn.lili.modules.member.entity.dto.MemberAddressDTO;
 import cn.lili.modules.order.cart.entity.dto.TradeDTO;
 import cn.lili.modules.order.order.entity.dos.Order;
-import cn.lili.modules.order.order.entity.dto.OrderExportDTO;
 import cn.lili.modules.order.order.entity.dto.OrderMessage;
 import cn.lili.modules.order.order.entity.dto.OrderSearchParams;
+import cn.lili.modules.order.order.entity.dto.PartDeliveryParamsDTO;
 import cn.lili.modules.order.order.entity.vo.OrderDetailVO;
+import cn.lili.modules.order.order.entity.vo.OrderNumVO;
 import cn.lili.modules.order.order.entity.vo.OrderSimpleVO;
 import cn.lili.modules.order.order.entity.vo.PaymentLog;
 import cn.lili.modules.system.entity.vo.Traces;
@@ -32,8 +33,9 @@ public interface OrderService extends IService<Order> {
      *
      * @param orderSn 订单编号
      * @param reason  错误原因
+     * @param refundMoney 是否退款
      */
-    void systemCancel(String orderSn, String reason);
+    void systemCancel(String orderSn, String reason,Boolean refundMoney);
 
     /**
      * 根据sn查询
@@ -43,6 +45,7 @@ public interface OrderService extends IService<Order> {
      */
     Order getBySn(String orderSn);
 
+
     /**
      * 订单查询
      *
@@ -50,6 +53,14 @@ public interface OrderService extends IService<Order> {
      * @return 简短订单分页
      */
     IPage<OrderSimpleVO> queryByParams(OrderSearchParams orderSearchParams);
+
+    /**
+     * 获取订单数量
+     *
+     * @param orderSearchParams 查询参数
+     * @return 订单数量
+     */
+    OrderNumVO getOrderNumVO(OrderSearchParams orderSearchParams);
 
     /**
      * 订单信息
@@ -63,9 +74,9 @@ public interface OrderService extends IService<Order> {
      * 根据促销查询订单
      *
      * @param orderPromotionType 订单类型
-     * @param payStatus 支付状态
-     * @param parentOrderSn 依赖订单编号
-     * @param orderSn 订单编号
+     * @param payStatus          支付状态
+     * @param parentOrderSn      依赖订单编号
+     * @param orderSn            订单编号
      * @return 订单信息
      */
     List<Order> queryListByPromotion(String orderPromotionType, String payStatus, String parentOrderSn, String orderSn);
@@ -74,9 +85,9 @@ public interface OrderService extends IService<Order> {
      * 根据促销查询订单
      *
      * @param orderPromotionType 订单类型
-     * @param payStatus 支付状态
-     * @param parentOrderSn 依赖订单编号
-     * @param orderSn 订单编号
+     * @param payStatus          支付状态
+     * @param parentOrderSn      依赖订单编号
+     * @param orderSn            订单编号
      * @return 订单信息
      */
     long queryCountByPromotion(String orderPromotionType, String payStatus, String parentOrderSn, String orderSn);
@@ -90,14 +101,13 @@ public interface OrderService extends IService<Order> {
     List<Order> queryListByPromotion(String pintuanId);
 
 
-
     /**
      * 查询导出订单列表
      *
      * @param orderSearchParams 查询参数
      * @return 导出订单列表
      */
-    List<OrderExportDTO> queryExportOrder(OrderSearchParams orderSearchParams);
+    void queryExportOrder(HttpServletResponse response,OrderSearchParams orderSearchParams) ;
 
 
     /**
@@ -166,12 +176,28 @@ public interface OrderService extends IService<Order> {
     Order delivery(String orderSn, String invoiceNumber, String logisticsId);
 
     /**
+     * 订单发货
+     *
+     * @param orderSn       订单编号
+     * @return 订单
+     */
+    Order shunFengDelivery(String orderSn);
+
+    /**
      * 获取物流踪迹
      *
      * @param orderSn 订单编号
      * @return 物流踪迹
      */
     Traces getTraces(String orderSn);
+
+    /**
+     * 获取地图版 物流踪迹
+     *
+     * @param orderSn 订单编号
+     * @return 物流踪迹
+     */
+    Traces getMapTraces(String orderSn);
 
     /**
      * 订单核验
@@ -181,6 +207,15 @@ public interface OrderService extends IService<Order> {
      * @return 订单
      */
     Order take(String orderSn, String verificationCode);
+
+
+    /**
+     * 订单核验
+     *
+     * @param verificationCode 验证码
+     * @return 订单
+     */
+    Order take(String verificationCode);
 
     /**
      * 根据核验码获取订单信息
@@ -278,10 +313,27 @@ public interface OrderService extends IService<Order> {
     /**
      * 检查是否开始虚拟成团
      *
-     * @param pintuanId 拼团活动id
+     * @param pintuanId   拼团活动id
      * @param requiredNum 成团人数
-     * @param fictitious 是否开启成团
+     * @param fictitious  是否开启成团
      * @return 是否成功
      */
     boolean checkFictitiousOrder(String pintuanId, Integer requiredNum, Boolean fictitious);
+
+    /**
+     * 订单部分发货
+     *
+     * @param partDeliveryParamsDTO 参数
+     * @return 订单
+     */
+    Order partDelivery(PartDeliveryParamsDTO partDeliveryParamsDTO);
+
+    /**
+     * 卖家订单备注
+     *
+     * @param orderSn 订单编号
+     * @param sellerRemark  卖家订单备注
+     * @return 订单
+     */
+    Order updateSellerRemark(String orderSn, String sellerRemark);
 }

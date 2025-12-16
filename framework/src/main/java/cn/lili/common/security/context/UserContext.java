@@ -1,11 +1,13 @@
 package cn.lili.common.security.context;
 
 import cn.lili.cache.Cache;
+import cn.lili.cache.CachePrefix;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.utils.StringUtils;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -37,6 +39,19 @@ public class UserContext {
         return null;
     }
 
+    /**
+     * 根据request获取用户信息
+     *
+     * @return 授权用户
+     */
+    public static String getUuid() {
+        if (RequestContextHolder.getRequestAttributes() != null) {
+            HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+            return request.getHeader(SecurityEnum.UUID.getValue());
+        }
+        return null;
+    }
+
 
     /**
      * 根据jwt获取token重的用户信息
@@ -47,10 +62,13 @@ public class UserContext {
      */
     public static AuthUser getAuthUser(Cache cache, String accessToken) {
         try {
-            if (cache.keys("*" + accessToken).isEmpty()) {
+            AuthUser authUser = getAuthUser(accessToken);
+            assert authUser != null;
+
+            if (!cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(authUser.getRole(), authUser.getId()) + accessToken)) {
                 throw new ServiceException(ResultCode.USER_AUTHORITY_ERROR);
             }
-            return getAuthUser(accessToken);
+            return authUser;
         } catch (Exception e) {
             return null;
         }
@@ -74,8 +92,9 @@ public class UserContext {
         try {
             //获取token的信息
             Claims claims
-                    = Jwts.parser()
+                    = Jwts.parserBuilder()
                     .setSigningKey(SecretKeyUtil.generalKeyByDecoders())
+                    .build()
                     .parseClaimsJws(accessToken).getBody();
             //获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
@@ -84,4 +103,21 @@ public class UserContext {
             return null;
         }
     }
+
+
+    /**
+     * 写入邀请人信息
+     */
+    public static void settingInviter(String memberId, Cache cache) {
+        if (RequestContextHolder.getRequestAttributes() != null) {
+            HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+            //邀请人id
+            String inviterId = request.getHeader(SecurityEnum.INVITER.getValue());
+            if (StringUtils.isNotEmpty(inviterId)) {
+                cache.put(CachePrefix.INVITER.getPrefix() + memberId, inviterId);
+            }
+        }
+    }
+
+
 }

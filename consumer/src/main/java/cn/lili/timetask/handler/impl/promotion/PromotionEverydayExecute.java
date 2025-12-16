@@ -1,7 +1,9 @@
 package cn.lili.timetask.handler.impl.promotion;
 
+import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.modules.promotion.entity.dos.Seckill;
 import cn.lili.modules.promotion.service.SeckillService;
+import cn.lili.modules.promotion.tools.PromotionTools;
 import cn.lili.modules.search.service.EsGoodsIndexService;
 import cn.lili.modules.system.entity.dos.Setting;
 import cn.lili.modules.system.entity.dto.SeckillSetting;
@@ -44,22 +46,40 @@ public class PromotionEverydayExecute implements EveryDayExecute {
      */
     @Override
     public void execute() {
-        //查询条件
-        this.esGoodsIndexService.cleanInvalidPromotion();
-        //定时创建活动
-        addSeckill();
+        try {
+            //清除所有商品索引的无效促销活动
+            this.esGoodsIndexService.cleanInvalidPromotion();
+        } catch (Exception e) {
+            log.error("清楚商品索引中无效促销异常", e);
+        }
+        try {
+            //定时创建活动
+            addSeckill();
+        } catch (Exception e) {
+            log.error("秒杀活动添加异常", e);
+        }
 
     }
 
     /**
      * 添加秒杀活动
      * 从系统设置中获取秒杀活动的配置
-     * 添加30天后的秒杀活动
+     * 添加明天后的秒杀活动
      */
     private void addSeckill() {
         Setting setting = settingService.get(SettingEnum.SECKILL_SETTING.name());
         SeckillSetting seckillSetting = new Gson().fromJson(setting.getSettingValue(), SeckillSetting.class);
-        Seckill seckill = new Seckill(SeckillService.PRE_CREATION, seckillSetting.getHours(), seckillSetting.getSeckillRule());
-        seckillService.savePromotions(seckill);
+        log.info("生成秒杀活动设置：{}", seckillSetting);
+        for (int i = 1; i <= SeckillService.PRE_CREATION; i++) {
+            Seckill seckill = new Seckill(i, seckillSetting.getHours(), seckillSetting.getSeckillRule());
+            seckill.setApplyEndTime(null);
+
+            //如果已经存在促销，则不再次保存
+            if (seckillService.list(
+                    PromotionTools.checkActiveTime(seckill.getStartTime(), seckill.getEndTime(), PromotionTypeEnum.SECKILL, null, seckill.getId())).isEmpty()) {
+                boolean result = seckillService.savePromotions(seckill);
+                log.info("生成秒杀活动参数：{},结果：{}", seckill, result);
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 package cn.lili.modules.goods.serviceimpl;
 
 import cn.hutool.core.convert.Convert;
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
@@ -15,8 +16,8 @@ import cn.lili.modules.goods.entity.dos.Studio;
 import cn.lili.modules.goods.entity.dos.StudioCommodity;
 import cn.lili.modules.goods.entity.enums.StudioStatusEnum;
 import cn.lili.modules.goods.entity.vos.StudioVO;
-import cn.lili.modules.goods.mapper.CommodityMapper;
 import cn.lili.modules.goods.mapper.StudioMapper;
+import cn.lili.modules.goods.service.CommodityService;
 import cn.lili.modules.goods.service.GoodsService;
 import cn.lili.modules.goods.service.StudioCommodityService;
 import cn.lili.modules.goods.service.StudioService;
@@ -32,11 +33,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -53,8 +57,8 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     private WechatLivePlayerUtil wechatLivePlayerUtil;
     @Autowired
     private StudioCommodityService studioCommodityService;
-    @Resource
-    private CommodityMapper commodityMapper;
+    @Autowired
+    private CommodityService commodityService;
     @Autowired
     private TimeTrigger timeTrigger;
     @Autowired
@@ -63,6 +67,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     private GoodsService goodsService;
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean create(Studio studio) {
         studio.setStoreId(Objects.requireNonNull(UserContext.getCurrentUser()).getStoreId());
         //创建小程序直播
@@ -97,6 +102,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean edit(Studio studio) {
         Studio oldStudio = this.getById(studio.getId());
         wechatLivePlayerUtil.editRoom(studio);
@@ -114,7 +120,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
                     rocketmqCustomProperties.getPromotionTopic());
 
             //直播间结束
-            broadcastMessage = new BroadcastMessage(studio.getId(), StudioStatusEnum.START.name());
+            broadcastMessage = new BroadcastMessage(studio.getId(), StudioStatusEnum.END.name());
             this.timeTrigger.edit(
                     TimeExecuteConstant.BROADCAST_EXECUTOR,
                     broadcastMessage,
@@ -134,7 +140,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
         //获取直播间信息
         BeanUtil.copyProperties(studio, studioVO);
         //获取直播间商品信息
-        studioVO.setCommodityList(commodityMapper.getCommodityByRoomId(studioVO.getRoomId()));
+        studioVO.setCommodityList(commodityService.getCommodityByRoomId(studioVO.getRoomId()));
         return studioVO;
     }
 
@@ -153,12 +159,13 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     }
 
     @Override
-    public Boolean push(Integer roomId, Integer goodsId, String storeId) {
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean push(Integer roomId, Integer liveGoodsId, String storeId, String goodsId) {
 
         //判断直播间是否已添加商品
         if (studioCommodityService.getOne(
                 new LambdaQueryWrapper<StudioCommodity>().eq(StudioCommodity::getRoomId, roomId)
-                        .eq(StudioCommodity::getGoodsId, goodsId)) != null) {
+                        .eq(StudioCommodity::getGoodsId, liveGoodsId)) != null) {
             throw new ServiceException(ResultCode.STODIO_GOODS_EXIST_ERROR);
         }
 
@@ -168,14 +175,14 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
         }
 
         //调用微信接口添加直播间商品并进行记录
-        if (Boolean.TRUE.equals(wechatLivePlayerUtil.pushGoods(roomId, goodsId))) {
-            studioCommodityService.save(new StudioCommodity(roomId, goodsId));
+        if (Boolean.TRUE.equals(wechatLivePlayerUtil.pushGoods(roomId, liveGoodsId))) {
+            studioCommodityService.save(new StudioCommodity(roomId, liveGoodsId));
             //添加直播间商品数量
             Studio studio = this.getByRoomId(roomId);
             studio.setRoomGoodsNum(studio.getRoomGoodsNum() != null ? studio.getRoomGoodsNum() + 1 : 1);
             //设置直播间默认的商品（前台展示）只展示两个
             if (studio.getRoomGoodsNum() < 3) {
-                studio.setRoomGoodsList(JSONUtil.toJsonStr(commodityMapper.getSimpleCommodityByRoomId(roomId)));
+                studio.setRoomGoodsList(JSONUtil.toJsonStr(commodityService.getSimpleCommodityByRoomId(roomId)));
             }
             return this.updateById(studio);
         }
@@ -183,6 +190,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean goodsDeleteInRoom(Integer roomId, Integer goodsId, String storeId) {
         Goods goods = goodsService.getOne(new LambdaQueryWrapper<Goods>().eq(Goods::getId, goodsId).eq(Goods::getStoreId, storeId));
         if (goods == null) {
@@ -196,7 +204,7 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
             studio.setRoomGoodsNum(studio.getRoomGoodsNum() - 1);
             //设置直播间默认的商品（前台展示）只展示两个
             if (studio.getRoomGoodsNum() < 3) {
-                studio.setRoomGoodsList(JSONUtil.toJsonStr(commodityMapper.getSimpleCommodityByRoomId(roomId)));
+                studio.setRoomGoodsList(JSONUtil.toJsonStr(commodityService.getSimpleCommodityByRoomId(roomId)));
             }
             return this.updateById(studio);
         }
@@ -204,15 +212,27 @@ public class StudioServiceImpl extends ServiceImpl<StudioMapper, Studio> impleme
     }
 
     @Override
-    public IPage<Studio> studioList(PageVO pageVO, Integer recommend, String status) {
+    public IPage<StudioVO> studioList(PageVO pageVO, Integer recommend, String status) {
         QueryWrapper queryWrapper = new QueryWrapper<Studio>()
                 .eq(recommend != null, "recommend", true)
-                .eq(status != null, "status", status)
+                .eq(CharSequenceUtil.isNotEmpty(status), "status", status)
                 .orderByDesc("create_time");
         if (UserContext.getCurrentUser() != null && UserContext.getCurrentUser().getRole().equals(UserEnums.STORE)) {
             queryWrapper.eq("store_id", UserContext.getCurrentUser().getStoreId());
         }
-        return this.page(PageUtil.initPage(pageVO), queryWrapper);
+        Page page = this.page(PageUtil.initPage(pageVO), queryWrapper);
+        List<Studio> records = page.getRecords();
+        List<StudioVO> studioVOS = new ArrayList<>();
+        for (Studio record : records) {
+            StudioVO studioVO = new StudioVO();
+            //获取直播间信息
+            BeanUtil.copyProperties(record, studioVO);
+            //获取直播间商品信息
+            studioVO.setCommodityList(commodityService.getCommodityByRoomId(studioVO.getRoomId()));
+            studioVOS.add(studioVO);
+        }
+        page.setRecords(studioVOS);
+        return page;
 
     }
 

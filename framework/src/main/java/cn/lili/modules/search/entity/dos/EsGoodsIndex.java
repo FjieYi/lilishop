@@ -1,17 +1,17 @@
 package cn.lili.modules.search.entity.dos;
 
+import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.elasticsearch.EsSuffix;
 import cn.lili.modules.goods.entity.dos.GoodsSku;
 import cn.lili.modules.goods.entity.dto.GoodsParamsDTO;
-import com.fasterxml.jackson.annotation.JsonFormat;
+import cn.lili.modules.promotion.tools.PromotionTools;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.Accessors;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
@@ -28,7 +28,7 @@ import java.util.Map;
  * @author paulG
  **/
 @Data
-@Document(indexName = "#{@elasticsearchProperties.indexPrefix}_" + EsSuffix.GOODS_INDEX_NAME)
+@Document(indexName = "#{@elasticsearchProperties.indexPrefix}_" + EsSuffix.GOODS_INDEX_NAME, createIndex = false)
 @ToString
 @NoArgsConstructor
 @Accessors(chain = true)
@@ -97,42 +97,42 @@ public class EsGoodsIndex implements Serializable {
     /**
      * 品牌id
      */
-    @Field(type = FieldType.Integer, fielddata = true)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("品牌id")
     private String brandId;
 
     /**
      * 品牌名称
      */
-    @Field(type = FieldType.Keyword, fielddata = true)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("品牌名称")
     private String brandName;
 
     /**
      * 品牌图片地址
      */
-    @Field(type = FieldType.Keyword, fielddata = true)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("品牌图片地址")
     private String brandUrl;
 
     /**
      * 分类path
      */
-    @Field(type = FieldType.Keyword)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("分类path")
     private String categoryPath;
 
     /**
      * 分类名称path
      */
-    @Field(type = FieldType.Keyword)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("分类名称path")
     private String categoryNamePath;
 
     /**
      * 店铺分类id
      */
-    @Field(type = FieldType.Keyword)
+    @Field(type = FieldType.Text, fielddata = true)
     @ApiModelProperty("店铺分类id")
     private String storeCategoryPath;
 
@@ -215,6 +215,8 @@ public class EsGoodsIndex implements Serializable {
 
     /**
      * 销售模式
+     *
+     * @see cn.lili.modules.goods.entity.enums.GoodsSalesModeEnum
      */
     @Field(type = FieldType.Text)
     @ApiModelProperty("销售模式")
@@ -249,20 +251,18 @@ public class EsGoodsIndex implements Serializable {
     private String goodsVideo;
 
     @ApiModelProperty("商品发布时间")
-    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
-    @Field(type = FieldType.Date, format = DateFormat.basic_date_time)
-    private Date releaseTime;
+    @Field(type = FieldType.Date)
+    private Long releaseTime;
 
     /**
      * @see cn.lili.modules.goods.entity.enums.GoodsTypeEnum
      */
     @ApiModelProperty(value = "商品类型", required = true)
+    @Field(type = FieldType.Text)
     private String goodsType;
 
-    /**
-     * @see cn.lili.modules.goods.entity.enums.GoodsTypeEnum
-     */
     @ApiModelProperty(value = "商品sku基础分数", required = true)
+    @Field(type = FieldType.Integer)
     private Integer skuSource;
 
     /**
@@ -278,9 +278,9 @@ public class EsGoodsIndex implements Serializable {
      * @see PromotionTypeEnum
      * value 为 促销活动实体信息
      */
-    @Field(type = FieldType.Nested)
-    @ApiModelProperty("商品促销活动集合，key 为 促销活动类型，value 为 促销活动实体信息 ")
-    private Map<String, Object> promotionMap;
+    @Field(type = FieldType.Text)
+    @ApiModelProperty("商品促销活动集合JSON，key 为 促销活动类型，value 为 促销活动实体信息 ")
+    private String promotionMapJson;
 
 
     public EsGoodsIndex(GoodsSku sku) {
@@ -309,14 +309,15 @@ public class EsGoodsIndex implements Serializable {
             this.intro = sku.getIntro();
             this.grade = sku.getGrade();
             this.recommend = sku.getRecommend();
-            this.releaseTime = new Date();
+            this.goodsType = sku.getGoodsType();
+            this.releaseTime = new Date().getTime();
         }
     }
 
     /**
      * 参数索引增加
      *
-     * @param sku 商品sku信息
+     * @param sku            商品sku信息
      * @param goodsParamDTOS 商品参数信息
      */
     public EsGoodsIndex(GoodsSku sku, List<GoodsParamsDTO> goodsParamDTOS) {
@@ -349,6 +350,11 @@ public class EsGoodsIndex implements Serializable {
         }
     }
 
+    public EsGoodsIndex(GoodsSku sku, Date createDate) {
+        this(sku);
+        this.releaseTime = createDate.getTime();
+    }
+
     public void setGoodsSku(GoodsSku sku) {
         if (sku != null) {
             this.id = sku.getId();
@@ -374,7 +380,15 @@ public class EsGoodsIndex implements Serializable {
             this.authFlag = sku.getAuthFlag();
             this.intro = sku.getIntro();
             this.grade = sku.getGrade();
-            this.releaseTime = new Date();
+            this.releaseTime = new Date().getTime();
         }
+    }
+
+    public Map<String, Object> getOriginPromotionMap() {
+        return JSONUtil.parseObj(this.promotionMapJson);
+    }
+
+    public Map<String, Object> getPromotionMap() {
+        return PromotionTools.filterInvalidPromotionsMap(JSONUtil.parseObj(this.promotionMapJson));
     }
 }

@@ -19,6 +19,8 @@ import cn.lili.modules.wallet.entity.dto.MemberWalletUpdateDTO;
 import cn.lili.modules.wallet.entity.enums.DepositServiceTypeEnum;
 import cn.lili.modules.wallet.service.MemberWalletService;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -57,9 +59,11 @@ public class WalletPlugin implements Payment {
     @Autowired
     private CashierSupport cashierSupport;
 
+    @Autowired
+    private RedissonClient redisson;
+
     @Override
     public ResultMessage<Object> h5pay(HttpServletRequest request, HttpServletResponse response, PayParam payParam) {
-
         savePaymentLog(payParam);
         return ResultUtil.success(ResultCode.PAY_SUCCESS);
     }
@@ -92,30 +96,22 @@ public class WalletPlugin implements Payment {
         return ResultUtil.success(ResultCode.PAY_SUCCESS);
     }
 
-    @Override
-    public void cancel(RefundLog refundLog) {
-
-        try {
-            memberWalletService.increase(new MemberWalletUpdateDTO(refundLog.getTotalAmount(),
-                    refundLog.getMemberId(),
-                    "取消[" + refundLog.getOrderSn() + "]订单，退还金额[" + refundLog.getTotalAmount() + "]",
-                    DepositServiceTypeEnum.WALLET_REFUND.name()));
-            refundLog.setIsRefund(true);
-            refundLogService.save(refundLog);
-        } catch (Exception e) {
-            log.error("订单取消错误", e);
-        }
-    }
-
     /**
      * 保存支付日志
      *
      * @param payParam 支付参数
      */
     private void savePaymentLog(PayParam payParam) {
-        //获取支付收银参数
-        CashierParam cashierParam = cashierSupport.cashierParam(payParam);
-        this.callBack(payParam, cashierParam);
+        //同一个会员如果在不同的客户端使用预存款支付，会存在同时支付，无法保证预存款的正确性，所以对会员加锁
+        RLock lock = redisson.getLock(UserContext.getCurrentUser().getId() + "");
+        lock.lock();
+        try {
+            //获取支付收银参数
+            CashierParam cashierParam = cashierSupport.cashierParam(payParam);
+            this.callBack(payParam, cashierParam);
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -123,7 +119,7 @@ public class WalletPlugin implements Payment {
         try {
             memberWalletService.increase(new MemberWalletUpdateDTO(refundLog.getTotalAmount(),
                     refundLog.getMemberId(),
-                    "售后[" + refundLog.getAfterSaleNo() + "]审批，退还金额[" + refundLog.getTotalAmount() + "]",
+                    "订单[" + refundLog.getOrderSn() + "]，售后单[" + refundLog.getAfterSaleNo() + "]，退还金额[" + refundLog.getTotalAmount() + "]",
                     DepositServiceTypeEnum.WALLET_REFUND.name()));
             refundLog.setIsRefund(true);
             refundLogService.save(refundLog);

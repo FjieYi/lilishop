@@ -1,5 +1,6 @@
 package cn.lili.controller.wechat;
 
+import cn.lili.common.aop.annotation.DemoSite;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
@@ -11,7 +12,6 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,12 +22,12 @@ import java.util.List;
  */
 @RestController
 @Api(tags = "微信小程序消息订阅接口")
-@RequestMapping("/manager/message/wechatMPMessage")
-@Transactional(rollbackFor = Exception.class)
+@RequestMapping("/manager/wechat/wechatMPMessage")
 public class WechatMPMessageManagerController {
     @Autowired
     private WechatMPMessageService wechatMPMessageService;
 
+    @DemoSite
     @GetMapping(value = "/init")
     @ApiOperation(value = "初始化微信小程序消息订阅")
     public ResultMessage init() {
@@ -52,6 +52,7 @@ public class WechatMPMessageManagerController {
         return new ResultUtil<IPage<WechatMPMessage>>().setData(data);
     }
 
+    @DemoSite
     @PostMapping
     @ApiOperation(value = "新增微信小程序消息订阅")
     public ResultMessage<WechatMPMessage> save(WechatMPMessage wechatMPMessage) {
@@ -60,6 +61,7 @@ public class WechatMPMessageManagerController {
         return new ResultUtil<WechatMPMessage>().setData(wechatMPMessage);
     }
 
+    @DemoSite
     @PutMapping("/{id}")
     @ApiOperation(value = "更新微信小程序消息订阅")
     public ResultMessage<WechatMPMessage> update(@PathVariable String id, WechatMPMessage wechatMPMessage) {
@@ -67,6 +69,7 @@ public class WechatMPMessageManagerController {
         return new ResultUtil<WechatMPMessage>().setData(wechatMPMessage);
     }
 
+    @DemoSite
     @DeleteMapping(value = "/{ids}")
     @ApiOperation(value = "删除微信小程序消息订阅")
     public ResultMessage<Object> delAllByIds(@PathVariable List ids) {

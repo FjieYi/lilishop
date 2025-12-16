@@ -2,10 +2,12 @@ package cn.lili.modules.goods.service;
 
 
 import cn.lili.modules.goods.entity.dos.Category;
+import cn.lili.modules.goods.entity.dto.CategorySearchParams;
 import cn.lili.modules.goods.entity.vos.CategoryVO;
 import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 商品分类业务层
@@ -26,12 +28,28 @@ public interface CategoryService extends IService<Category> {
     List<Category> dbList(String parentId);
 
     /**
+     * 获取分类
+     *
+     * @param id
+     * @return
+     */
+    Category getCategoryById(String id);
+
+    /**
      * 根据分类id集合获取所有分类根据层级排序
      *
      * @param ids 分类ID集合
      * @return 商品分类列表
      */
     List<Category> listByIdsOrderByLevel(List<String> ids);
+
+    /**
+     * 根据分类id集合获取所有分类根据层级排序
+     *
+     * @param ids 分类ID集合
+     * @return 商品分类列表
+     */
+    List<Map<String, Object>> listMapsByIdsOrderByLevel(List<String> ids, String columns);
 
     /**
      * 获取分类树
@@ -52,9 +70,10 @@ public interface CategoryService extends IService<Category> {
      * 查询所有的分类，父子关系
      * 数据库获取
      *
+     * @param categorySearchParams 查询参数
      * @return 所有的分类，父子关系
      */
-    List<CategoryVO> listAllChildren();
+    List<CategoryVO> listAllChildren(CategorySearchParams categorySearchParams);
 
     /**
      * 获取指定分类的分类名称

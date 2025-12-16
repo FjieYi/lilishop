@@ -1,6 +1,5 @@
 package cn.lili.modules.store.entity.dto;
 
-import cn.lili.common.validation.Mobile;
 import cn.lili.common.validation.Phone;
 import com.baomidou.mybatisplus.annotation.TableField;
 import io.swagger.annotations.ApiModelProperty;
@@ -49,7 +48,6 @@ public class StoreEditDTO {
     @ApiModelProperty(value = "公司地址地区")
     private String companyAddressPath;
 
-    @Mobile
     @ApiModelProperty(value = "公司电话")
     private String companyPhone;
 
@@ -78,7 +76,6 @@ public class StoreEditDTO {
     @ApiModelProperty(value = "营业执照号")
     private String licenseNum;
 
-    @Size(min = 1, max = 200, message = "法定经营范围长度为1-200位字符")
     @ApiModelProperty(value = "法定经营范围")
     private String scope;
 
@@ -186,4 +183,40 @@ public class StoreEditDTO {
     @ApiModelProperty(value = "腾讯云智服小程序唯一标识")
     private String yzfMpSign;
 
+    public String getSalesConsigneeName() {
+        return getDefaultValue(salesConsigneeName);
+    }
+
+    public String getSalesConsigneeMobile() {
+        return getDefaultValue(salesConsigneeMobile);
+    }
+
+    public String getSalesConsigneeAddressId() {
+        return getDefaultValue(salesConsigneeAddressId);
+    }
+
+    public String getSalesConsigneeAddressPath() {
+        return getDefaultValue(salesConsigneeAddressPath);
+    }
+
+    public String getSalesConsigneeDetail() {
+        return getDefaultValue(salesConsigneeDetail);
+    }
+
+    public String getYzfSign() {
+        return getDefaultValue(yzfSign);
+    }
+
+    public String getYzfMpSign() {
+        return getDefaultValue(yzfMpSign);
+    }
+
+    /**
+     * JSON转换中的null 会转成 "null"
+     * @param value
+     * @return
+     */
+    private String getDefaultValue(String value){
+        return (value == null || "null".equals(value)) ? "" : value;
+    }
 }

@@ -3,12 +3,18 @@ package cn.lili.modules.goods.service;
 import cn.lili.cache.CachePrefix;
 import cn.lili.modules.goods.entity.dos.Goods;
 import cn.lili.modules.goods.entity.dos.GoodsSku;
+import cn.lili.modules.goods.entity.dto.GoodsOperationDTO;
 import cn.lili.modules.goods.entity.dto.GoodsSearchParams;
+import cn.lili.modules.goods.entity.dto.GoodsSkuDTO;
 import cn.lili.modules.goods.entity.dto.GoodsSkuStockDTO;
 import cn.lili.modules.goods.entity.vos.GoodsSkuVO;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 
@@ -43,19 +49,18 @@ public interface GoodsSkuService extends IService<GoodsSku> {
     /**
      * 添加商品sku
      *
-     * @param skuList sku列表
-     * @param goods   商品信息
+     * @param goods             商品信息
+     * @param goodsOperationDTO 商品操作信息
      */
-    void add(List<Map<String, Object>> skuList, Goods goods);
+    void add(Goods goods, GoodsOperationDTO goodsOperationDTO);
 
     /**
      * 更新商品sku
      *
-     * @param skuList            sku列表
-     * @param goods              商品信息
-     * @param regeneratorSkuFlag 是否是否重新生成sku
+     * @param goods             商品信息
+     * @param goodsOperationDTO 商品操作信息
      */
-    void update(List<Map<String, Object>> skuList, Goods goods, Boolean regeneratorSkuFlag);
+    void update(Goods goods, GoodsOperationDTO goodsOperationDTO);
 
     /**
      * 更新商品sku
@@ -78,6 +83,14 @@ public interface GoodsSkuService extends IService<GoodsSku> {
      * @return 商品SKU信息
      */
     GoodsSku getGoodsSkuByIdFromCache(String id);
+
+    /**
+     * 从缓存中获取可参与促销商品
+     *
+     * @param skuId skuid
+     * @return 商品详情
+     */
+    GoodsSku getCanPromotionGoodsSkuByIdFromCache(String skuId);
 
     /**
      * 获取商品sku详情
@@ -135,6 +148,29 @@ public interface GoodsSkuService extends IService<GoodsSku> {
      * @return 商品sku信息
      */
     IPage<GoodsSku> getGoodsSkuByPage(GoodsSearchParams searchParams);
+    /**
+     * 查询导出商品库存
+     *
+     * @param searchParams 查询参数
+     * @return 导出商品库存
+     */
+    void queryExportStock(HttpServletResponse response, GoodsSearchParams searchParams);
+
+    /**
+     * 导入商品库存
+     * @param storeId 店铺ID
+     * @param files 文件
+     */
+    void importStock(String storeId, MultipartFile files);
+
+    /**
+     * 分页查询商品sku信息
+     *
+     * @param page         分页参数
+     * @param queryWrapper 查询参数
+     * @return 商品sku信息
+     */
+    IPage<GoodsSkuDTO> getGoodsSkuDTOByPage(Page<GoodsSkuDTO> page, Wrapper<GoodsSkuDTO> queryWrapper);
 
     /**
      * 列表查询商品sku信息
@@ -152,11 +188,13 @@ public interface GoodsSkuService extends IService<GoodsSku> {
     void updateGoodsSkuStatus(Goods goods);
 
     /**
-     * 发送生成ES商品索引
+     * 更新商品sku状态根据店铺id
      *
-     * @param goods 商品信息
+     * @param storeId      店铺id
+     * @param marketEnable 市场启用状态
+     * @param authFlag     审核状态
      */
-    void generateEs(Goods goods);
+    void updateGoodsSkuStatusByStoreId(String storeId, String marketEnable, String authFlag);
 
     /**
      * 更新SKU库存
@@ -164,6 +202,19 @@ public interface GoodsSkuService extends IService<GoodsSku> {
      * @param goodsSkuStockDTOS sku库存修改实体
      */
     void updateStocks(List<GoodsSkuStockDTO> goodsSkuStockDTOS);
+    void updateStocksByType(List<GoodsSkuStockDTO> goodsSkuStockDTOS);
+
+    /**
+     * 更新SKU预警库存
+     * @param goodsSkuStockDTOS sku库存修改实体
+     */
+    void batchUpdateAlertQuantity(List<GoodsSkuStockDTO> goodsSkuStockDTOS);
+
+    /**
+     * 更新SKU预警库存
+     * @param goodsSkuStockDTO sku库存修改实体
+     */
+    void updateAlertQuantity(GoodsSkuStockDTO goodsSkuStockDTO);
 
     /**
      * 更新SKU库存
@@ -172,6 +223,7 @@ public interface GoodsSkuService extends IService<GoodsSku> {
      * @param quantity 设置的库存数量
      */
     void updateStock(String skuId, Integer quantity);
+    void updateStock(String skuId, Integer quantity,String type);
 
     /**
      * 获取商品sku库存
@@ -186,20 +238,71 @@ public interface GoodsSkuService extends IService<GoodsSku> {
      *
      * @param goodsSkus
      */
-    void updateGoodsStuck(List<GoodsSku> goodsSkus);
+    void updateGoodsStock(List<GoodsSku> goodsSkus);
 
     /**
-     * 更新SKU评价数量
+     * 根据商品id获取全部skuId的集合
      *
-     * @param skuId SKUId
+     * @param goodsId goodsId
+     * @return 全部skuId的集合
      */
-    void updateGoodsSkuCommentNum(String skuId);
+    List<String> getSkuIdsByGoodsId(String goodsId);
 
     /**
-     * 更新商品sku促销价格
+     * 删除并且新增sku，即覆盖之前信息
      *
-     * @param skuId skuId
-     * @param promotionPrice 促销价格
+     * @param goodsSkus 商品sku集合
+     * @return
      */
-    void updateGoodsSkuPromotion(String skuId, Double promotionPrice);
+    boolean deleteAndInsertGoodsSkus(List<GoodsSku> goodsSkus);
+
+    /**
+     * 统计sku总数
+     *
+     * @param storeId 店铺id
+     * @return sku总数
+     */
+    Long countSkuNum(String storeId);
+
+    /**
+     * 批量渲染商品sku
+     *
+     * @param goodsSkuList SKU基础数据列表
+     * @param goodsOperationDTO 商品操作信息
+     */
+    void renderGoodsSkuList(List<GoodsSku> goodsSkuList, GoodsOperationDTO goodsOperationDTO);
+
+    /**
+     * 更新商品sku购买数量
+     *
+     * @param skuId   skuId
+     * @param buyCount 购买数量
+     */
+    void updateGoodsSkuBuyCount(String skuId, int buyCount);
+
+    /**
+     * 更新商品sku评分
+     *
+     * @param goodsId goodsId
+     * @param grade   评分
+     * @param commentNum 评论数量
+     */
+    void updateGoodsSkuGrade(String goodsId, double grade,int commentNum);
+
+    /**
+     * 获取最新商品库存
+     *
+     * @param goodsId 商品ID
+     * @return 库存数量
+     */
+    Integer getGoodsStock(String goodsId);
+
+    /**
+     * 更新sku运费模版
+     *
+     * @param goodsId 商品id
+     * @param templateId 运费模版id
+     * @return 操作结果
+     */
+    Boolean freight(List<String> goodsId, String templateId);
 }

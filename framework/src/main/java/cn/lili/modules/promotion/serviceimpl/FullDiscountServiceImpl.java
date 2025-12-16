@@ -8,9 +8,9 @@ import cn.lili.modules.order.cart.entity.vo.FullDiscountVO;
 import cn.lili.modules.promotion.entity.dos.Coupon;
 import cn.lili.modules.promotion.entity.dos.FullDiscount;
 import cn.lili.modules.promotion.entity.dos.PromotionGoods;
+import cn.lili.modules.promotion.entity.dto.search.PromotionGoodsSearchParams;
 import cn.lili.modules.promotion.entity.enums.PromotionsScopeTypeEnum;
 import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
-import cn.lili.modules.promotion.entity.vos.PromotionGoodsSearchParams;
 import cn.lili.modules.promotion.mapper.FullDiscountMapper;
 import cn.lili.modules.promotion.service.CouponService;
 import cn.lili.modules.promotion.service.FullDiscountService;
@@ -23,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -33,7 +32,6 @@ import java.util.List;
  * @since 2020/8/21
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class FullDiscountServiceImpl extends AbstractPromotionsServiceImpl<FullDiscountMapper, FullDiscount> implements FullDiscountService {
 
     /**
@@ -96,8 +94,6 @@ public class FullDiscountServiceImpl extends AbstractPromotionsServiceImpl<FullD
             PromotionTools.checkPromotionTime(fullDiscountVO.getStartTime(), fullDiscountVO.getEndTime());
         }
 
-        //当前时间段是否存在同类活动
-        this.checkSameActiveExist(promotions.getStartTime(), promotions.getEndTime(), promotions.getStoreId(), promotions.getId());
         //检查满减参数
         this.checkFullDiscount(promotions);
 
@@ -107,19 +103,22 @@ public class FullDiscountServiceImpl extends AbstractPromotionsServiceImpl<FullD
      * 更新促销商品信息
      *
      * @param promotions 促销实体
+     * @return 是否更新成功
      */
     @Override
-    public void updatePromotionsGoods(FullDiscount promotions) {
-        super.updatePromotionsGoods(promotions);
-        if (!PromotionsStatusEnum.CLOSE.name().equals(promotions.getPromotionStatus())
-                && PromotionsScopeTypeEnum.PORTION_GOODS.name().equals(promotions.getScopeType())
-                && promotions instanceof FullDiscountVO) {
+    @Transactional(rollbackFor = {Exception.class})
+    public boolean updatePromotionsGoods(FullDiscount promotions) {
+        boolean result = super.updatePromotionsGoods(promotions);
+        if (!PromotionsStatusEnum.CLOSE.name().equals(promotions.getPromotionStatus()) && PromotionsScopeTypeEnum.PORTION_GOODS.name().equals(promotions.getScopeType()) && promotions instanceof FullDiscountVO) {
             FullDiscountVO fullDiscountVO = (FullDiscountVO) promotions;
-            List<PromotionGoods> promotionGoodsList = PromotionTools.promotionGoodsInit(fullDiscountVO.getPromotionGoodsList(), fullDiscountVO, PromotionTypeEnum.FULL_DISCOUNT);
+            List<PromotionGoods> promotionGoodsList =
+                    PromotionTools.promotionGoodsInit(fullDiscountVO.getPromotionGoodsList(), fullDiscountVO,
+                            PromotionTypeEnum.FULL_DISCOUNT);
             this.promotionGoodsService.deletePromotionGoods(Collections.singletonList(promotions.getId()));
             //促销活动商品更新
-            this.promotionGoodsService.saveBatch(promotionGoodsList);
+            result = this.promotionGoodsService.saveBatch(promotionGoodsList);
         }
+        return result;
 
     }
 
@@ -164,8 +163,7 @@ public class FullDiscountServiceImpl extends AbstractPromotionsServiceImpl<FullD
      * @param fullDiscount 满减参数信息
      */
     private void checkFullDiscount(FullDiscount fullDiscount) {
-        if (fullDiscount.getFullMinusFlag() == null && fullDiscount.getCouponFlag() == null && fullDiscount.getGiftFlag() == null
-                && fullDiscount.getPointFlag() == null && fullDiscount.getFullRateFlag() == null) {
+        if (fullDiscount.getFullMinusFlag() == null && fullDiscount.getCouponFlag() == null && fullDiscount.getGiftFlag() == null && fullDiscount.getPointFlag() == null && fullDiscount.getFullRateFlag() == null) {
             throw new ServiceException(ResultCode.FULL_DISCOUNT_WAY_ERROR);
         }
         //如果优惠方式是满减
@@ -195,23 +193,6 @@ public class FullDiscountServiceImpl extends AbstractPromotionsServiceImpl<FullD
             fullDiscount.setTitle("满" + fullDiscount.getFullMoney() + " 打" + fullDiscount.getFullRate() + "折");
         }
 
-    }
-
-    /**
-     * 检查同一时间段内不能存在相同的活动数量
-     *
-     * @param statTime 开始时间
-     * @param endTime  结束时间
-     * @param storeId  店铺id
-     * @param id       满优惠活动ID
-     */
-    private void checkSameActiveExist(Date statTime, Date endTime, String storeId, String id) {
-        //同一时间段内相同的活动
-        QueryWrapper<FullDiscount> queryWrapper = PromotionTools.checkActiveTime(statTime, endTime, PromotionTypeEnum.FULL_DISCOUNT, storeId, id);
-        long sameNum = this.count(queryWrapper);
-        if (sameNum > 0) {
-            throw new ServiceException(ResultCode.PROMOTION_SAME_ACTIVE_EXIST);
-        }
     }
 
     /**

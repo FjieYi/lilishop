@@ -1,5 +1,6 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.wallet.entity.dos.Recharge;
@@ -9,7 +10,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,18 +27,22 @@ import javax.validation.constraints.Min;
 @RestController
 @Api(tags = "买家端,预存款充值记录接口")
 @RequestMapping("/buyer/trade/recharge")
-@Transactional(rollbackFor = Exception.class)
+@Validated
 public class RechargeTradeBuyerController {
 
     @Autowired
     private RechargeService rechargeService;
 
+    @PreventDuplicateSubmissions
     @PostMapping
     @ApiOperation(value = "创建余额充值订单")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "price", value = "充值金额", required = true, dataType = "double", paramType = "query")
     })
-    public ResultMessage<Recharge> create(@Max(value = 10000, message = "充值金额单次最多允许充值10000元") @Min(value = 1, message = "充值金额单次最少充值金额为1元") Double price) {
+    public ResultMessage<Recharge> create(
+            @Max(value = 10000, message = "充值金额单次最多允许充值10000元")
+            @Min(value = 1, message = "充值金额单次最少充值金额为1元")
+            Double price) {
         Recharge recharge = this.rechargeService.recharge(price);
         return ResultUtil.data(recharge);
     }

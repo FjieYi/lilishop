@@ -13,6 +13,9 @@ import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import org.springframework.data.elasticsearch.annotations.DateFormat;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.util.Date;
 
@@ -51,10 +54,12 @@ public class PromotionGoods extends BaseEntity {
 
     @ApiModelProperty(value = "活动开始时间")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.custom, pattern = "yyyy-MM-dd HH:mm:ss || yyyy-MM-dd || yyyy/MM/dd HH:mm:ss|| yyyy/MM/dd ||epoch_millis")
     private Date startTime;
 
     @ApiModelProperty(value = "活动结束时间")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.custom, pattern = "yyyy-MM-dd HH:mm:ss || yyyy-MM-dd || yyyy/MM/dd HH:mm:ss|| yyyy/MM/dd ||epoch_millis")
     private Date endTime;
 
     @ApiModelProperty(value = "活动id")
@@ -121,15 +126,22 @@ public class PromotionGoods extends BaseEntity {
             this.promotionId = pointsGoods.getId();
             this.quantity = pointsGoods.getActiveStock();
             this.originalPrice = sku.getPrice();
+            this.promotionType = PromotionTypeEnum.POINTS_GOODS.name();
+            this.scopeId = sku.getId();
         }
     }
-
 
 
     public PromotionGoods(KanjiaActivityGoodsDTO kanjiaActivityGoodsDTO) {
         if (kanjiaActivityGoodsDTO != null) {
             BeanUtil.copyProperties(kanjiaActivityGoodsDTO, this, "id");
             BeanUtil.copyProperties(kanjiaActivityGoodsDTO.getGoodsSku(), this, "id");
+            this.setQuantity(kanjiaActivityGoodsDTO.getStock());
+            this.setPromotionId(kanjiaActivityGoodsDTO.getId());
+            this.setPromotionType(PromotionTypeEnum.KANJIA.name());
+            this.setTitle(PromotionTypeEnum.KANJIA.name() + "-" + kanjiaActivityGoodsDTO.getGoodsName());
+            this.setScopeType(PromotionsScopeTypeEnum.PORTION_GOODS.name());
+            this.setPromotionType(PromotionTypeEnum.KANJIA.name());
         }
     }
 }

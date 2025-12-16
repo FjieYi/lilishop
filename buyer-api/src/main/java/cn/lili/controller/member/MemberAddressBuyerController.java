@@ -26,7 +26,7 @@ import java.util.Objects;
  */
 @RestController
 @Api(tags = "买家端,会员地址接口")
-@RequestMapping("/buyer/memberAddress")
+@RequestMapping("/buyer/member/address")
 public class MemberAddressBuyerController {
 
     /**
@@ -59,7 +59,7 @@ public class MemberAddressBuyerController {
     public ResultMessage<MemberAddress> addShippingAddress(@Valid MemberAddress shippingAddress) {
         //添加会员地址
         shippingAddress.setMemberId(Objects.requireNonNull(UserContext.getCurrentUser()).getId());
-        if(shippingAddress.getIsDefault()==null){
+        if(Objects.isNull(shippingAddress.getIsDefault())){
             shippingAddress.setIsDefault(false);
         }
         return ResultUtil.data(memberAddressService.saveMemberAddress(shippingAddress));
@@ -68,6 +68,8 @@ public class MemberAddressBuyerController {
     @ApiOperation(value = "修改会员收件地址")
     @PutMapping
     public ResultMessage<MemberAddress> editShippingAddress(@Valid MemberAddress shippingAddress) {
+        OperationalJudgment.judgment(memberAddressService.getById(shippingAddress.getId()));
+        shippingAddress.setMemberId(Objects.requireNonNull(UserContext.getCurrentUser()).getId());
         return ResultUtil.data(memberAddressService.updateMemberAddress(shippingAddress));
     }
 

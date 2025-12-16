@@ -1,5 +1,6 @@
 package cn.lili.controller.member;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.enums.SwitchEnum;
 import cn.lili.common.security.context.UserContext;
@@ -28,7 +29,7 @@ import javax.validation.constraints.NotNull;
  */
 @RestController
 @Api(tags = "买家端,会员商品评价接口")
-@RequestMapping("/buyer/memberEvaluation")
+@RequestMapping("/buyer/member/evaluation")
 public class MemberEvaluationBuyerController {
 
     /**
@@ -37,16 +38,17 @@ public class MemberEvaluationBuyerController {
     @Autowired
     private MemberEvaluationService memberEvaluationService;
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "添加会员评价")
     @PostMapping
     public ResultMessage<MemberEvaluationDTO> save(@Valid MemberEvaluationDTO memberEvaluationDTO) {
-        return ResultUtil.data(memberEvaluationService.addMemberEvaluation(memberEvaluationDTO));
+        return ResultUtil.data(memberEvaluationService.addMemberEvaluation(memberEvaluationDTO, true));
     }
 
     @ApiOperation(value = "查看会员评价详情")
     @ApiImplicitParam(name = "id", value = "评价ID", required = true, paramType = "path")
     @GetMapping(value = "/get/{id}")
-    public ResultMessage<MemberEvaluationVO> save(@NotNull(message = "评价ID不能为空") @PathVariable("id") String id) {
+    public ResultMessage<MemberEvaluationVO> get(@NotNull(message = "评价ID不能为空") @PathVariable("id") String id) {
         return ResultUtil.data(memberEvaluationService.queryById(id));
 
     }

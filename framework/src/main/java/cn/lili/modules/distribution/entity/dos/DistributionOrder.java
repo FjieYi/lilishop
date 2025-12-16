@@ -50,6 +50,9 @@ public class DistributionOrder extends BaseIdEntity {
     private String distributionId;
     @ApiModelProperty(value = "分销员名称")
     private String distributionName;
+
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @ApiModelProperty(value = "解冻日期")
     private Date settleCycle;
     @ApiModelProperty(value = "提成金额")
@@ -76,9 +79,11 @@ public class DistributionOrder extends BaseIdEntity {
     private String image;
     @ApiModelProperty(value = "商品数量")
     private Integer num;
+    @ApiModelProperty(value = "退款商品数量")
+    private Integer refundNum;
 
     public DistributionOrder(StoreFlow storeFlow) {
-        distributionOrderStatus = DistributionOrderStatusEnum.WAIT_BILL.name();
+        distributionOrderStatus = DistributionOrderStatusEnum.NO_COMPLETED.name();
         memberId = storeFlow.getMemberId();
         memberName = storeFlow.getMemberName();
         rebate = storeFlow.getDistributionRebate();
@@ -92,6 +97,8 @@ public class DistributionOrder extends BaseIdEntity {
         specs = storeFlow.getSpecs();
         image = storeFlow.getImage();
         num = storeFlow.getNum();
+        refundNum=0;
+        sellBackRebate=0D;
     }
 
 }

@@ -8,20 +8,20 @@ import cn.lili.modules.permission.repository.SystemLogRepository;
 import cn.lili.modules.permission.service.SystemLogService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.MultiMatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.NativeSearchQueryBuilder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
  * @since 2020/11/17 3:45 下午
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class SystemLogServiceImpl implements SystemLogService {
 
     @Autowired
@@ -43,8 +42,7 @@ public class SystemLogServiceImpl implements SystemLogService {
      * ES
      */
     @Autowired
-    @Qualifier("elasticsearchRestTemplate")
-    private ElasticsearchRestTemplate restTemplate;
+    private ElasticsearchOperations restTemplate;
 
     @Override
     public void saveLog(SystemLogVO systemLogVO) {
@@ -65,9 +63,10 @@ public class SystemLogServiceImpl implements SystemLogService {
 
     @Override
     public IPage<SystemLogVO> queryLog(String storeId, String operatorName, String key, SearchVO searchVo, PageVO pageVO) {
+        pageVO.setNotConvert(true);
         IPage<SystemLogVO> iPage = new Page<>();
         NativeSearchQueryBuilder nativeSearchQueryBuilder = new NativeSearchQueryBuilder();
-        if (pageVO != null) {
+        if (pageVO.getPageNumber() != null && pageVO.getPageSize() != null) {
             int pageNumber = pageVO.getPageNumber() - 1;
             if (pageNumber < 0) {
                 pageNumber = 0;
@@ -84,42 +83,35 @@ public class SystemLogServiceImpl implements SystemLogService {
         }
 
         if (CharSequenceUtil.isNotEmpty(operatorName)) {
-            nativeSearchQueryBuilder.withFilter(QueryBuilders.wildcardQuery("username", "*" + operatorName + "*"));
+            nativeSearchQueryBuilder.withQuery(QueryBuilders.matchQuery("username", operatorName));
         }
 
         if (CharSequenceUtil.isNotEmpty(key)) {
-            BoolQueryBuilder filterBuilder = new BoolQueryBuilder();
-            filterBuilder.should(QueryBuilders.wildcardQuery("requestUrl", "*" + key + "*"))
-                    .should(QueryBuilders.wildcardQuery("requestParam", "*" + key + "*"))
-                    .should(QueryBuilders.wildcardQuery("responseBody", "*" + key + "*"))
-                    .should(QueryBuilders.wildcardQuery("name", "*" + key + "*"));
-            nativeSearchQueryBuilder.withFilter(filterBuilder);
+            MultiMatchQueryBuilder multiMatchQueryBuilder = QueryBuilders.multiMatchQuery(key, "requestUrl", "requestParam", "responseBody", "name");
+            multiMatchQueryBuilder.fuzziness(Fuzziness.AUTO);
+            nativeSearchQueryBuilder.withFilter(multiMatchQueryBuilder);
         }
         //时间有效性判定
         if (searchVo.getConvertStartDate() != null && searchVo.getConvertEndDate() != null) {
             BoolQueryBuilder filterBuilder = new BoolQueryBuilder();
             //大于方法
-            filterBuilder.must(
+            filterBuilder.filter(
                     QueryBuilders.rangeQuery("createTime")
-                            .gte(searchVo.getConvertStartDate().getTime()));
-            //小于方法
-            filterBuilder.must(
-                    QueryBuilders.rangeQuery("createTime")
-                            .lt(searchVo.getConvertEndDate().getTime()));
+                            .gte(searchVo.getConvertStartDate().getTime())
+                            .lte(searchVo.getConvertEndDate().getTime()));
 
             nativeSearchQueryBuilder.withFilter(filterBuilder);
         }
 
-        SearchHits<SystemLogVO> searchResult = restTemplate.search(nativeSearchQueryBuilder.build(), SystemLogVO.class);
-
-        iPage.setTotal(searchResult.getTotalHits());
-
-        if (pageVO != null && CharSequenceUtil.isNotEmpty(pageVO.getOrder()) && CharSequenceUtil.isNotEmpty(pageVO.getSort())) {
+        if (CharSequenceUtil.isNotEmpty(pageVO.getOrder()) && CharSequenceUtil.isNotEmpty(pageVO.getSort())) {
             nativeSearchQueryBuilder.withSort(SortBuilders.fieldSort(pageVO.getSort()).order(SortOrder.valueOf(pageVO.getOrder().toUpperCase())));
         } else {
             nativeSearchQueryBuilder.withSort(SortBuilders.fieldSort("createTime").order(SortOrder.DESC));
         }
 
+        SearchHits<SystemLogVO> searchResult = restTemplate.search(nativeSearchQueryBuilder.build(), SystemLogVO.class);
+
+        iPage.setTotal(searchResult.getTotalHits());
 
         iPage.setRecords(searchResult.getSearchHits().stream().map(SearchHit::getContent).collect(Collectors.toList()));
         return iPage;

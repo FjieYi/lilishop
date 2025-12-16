@@ -1,5 +1,8 @@
 package cn.lili.modules.wallet.entity.dos;
 
+import cn.lili.common.security.sensitive.Sensitive;
+import cn.lili.common.security.sensitive.enums.SensitiveStrategy;
+import cn.lili.modules.wallet.entity.enums.WithdrawStatusEnum;
 import cn.lili.mybatis.BaseEntity;
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -28,6 +31,9 @@ public class MemberWithdrawApply extends BaseEntity {
     @ApiModelProperty(value = "申请提现金额")
     private Double applyMoney;
 
+    /**
+     * @see WithdrawStatusEnum
+     */
     @ApiModelProperty(value = "提现状态")
     private String applyStatus;
 
@@ -35,6 +41,7 @@ public class MemberWithdrawApply extends BaseEntity {
     private String memberId;
 
     @ApiModelProperty(value = "会员名称")
+    @Sensitive(strategy = SensitiveStrategy.PHONE)
     private String memberName;
 
     @ApiModelProperty(value = "审核备注")
@@ -48,5 +55,22 @@ public class MemberWithdrawApply extends BaseEntity {
 
     @ApiModelProperty(value = "sn")
     private String sn;
+
+    /**
+     * 支付宝提现时必填
+     */
+    @ApiModelProperty(value = "真实姓名")
+    private String realName;
+    /**
+     * 支付宝登录账号
+     */
+    @ApiModelProperty(value = "第三方平台账号")
+    private String connectNumber;
+
+    /**
+     * 支付宝登录账号
+     */
+    @ApiModelProperty(value = "第三方错误消息")
+    private String errorMessage;
 
 }

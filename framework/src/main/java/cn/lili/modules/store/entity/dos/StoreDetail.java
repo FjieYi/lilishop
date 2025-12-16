@@ -92,7 +92,6 @@ public class StoreDetail extends BaseIdEntity {
     @ApiModelProperty(value = "营业执照号")
     private String licenseNum;
 
-    @Size(min = 1, max = 200, message = "法定经营范围长度为1-200位字符")
     @ApiModelProperty(value = "法定经营范围")
     private String scope;
 
@@ -174,6 +173,22 @@ public class StoreDetail extends BaseIdEntity {
     @ApiModelProperty(value = "详细地址")
     private String salesConsigneeDetail;
 
+
+    //店铺发货地址
+    @ApiModelProperty(value = "发货人姓名")
+    private String salesConsignorName;
+
+    @ApiModelProperty(value = "发件人手机")
+    private String salesConsignorMobile;
+
+    @ApiModelProperty(value = "发件人地址Id， '，'分割")
+    private String salesConsignorAddressId;
+
+    @ApiModelProperty(value = "发件人地址名称， '，'分割")
+    private String salesConsignorAddressPath;
+
+    @ApiModelProperty(value = "发件人详细地址")
+    private String salesConsignorDetail;
 
     public StoreDetail(Store store, AdminStoreApplyDTO adminStoreApplyDTO) {
         this.storeId = store.getId();

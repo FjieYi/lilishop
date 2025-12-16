@@ -1,26 +1,22 @@
 package cn.lili.modules.file.serviceimpl;
 
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.AuthUser;
-import cn.lili.mybatis.util.PageUtil;
-import cn.lili.common.utils.StringUtils;
-import cn.lili.common.vo.PageVO;
-import cn.lili.common.vo.SearchVO;
 import cn.lili.modules.file.entity.File;
 import cn.lili.modules.file.entity.dto.FileOwnerDTO;
 import cn.lili.modules.file.mapper.FileMapper;
-import cn.lili.modules.file.plugin.FileManagerPlugin;
+import cn.lili.modules.file.plugin.FilePluginFactory;
 import cn.lili.modules.file.service.FileService;
+import cn.lili.mybatis.util.PageUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 /**
  * 文件管理业务层实现
@@ -29,28 +25,48 @@ import java.util.List;
  * @since 2020/11/26 17:50
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class FileServiceImpl extends ServiceImpl<FileMapper, File> implements FileService {
 
     @Autowired
-    private FileManagerPlugin fileManagerPlugin;
+    private FilePluginFactory filePluginFactory;
 
     @Override
     public void batchDelete(List<String> ids) {
 
-        LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper();
+        LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.in(File::getId, ids);
 
         List<File> files = this.list(queryWrapper);
         List<String> keys = new ArrayList<>();
         files.forEach(item -> keys.add(item.getFileKey()));
-        fileManagerPlugin.deleteFile(keys);
+        if (!keys.isEmpty()) {
+            filePluginFactory.filePlugin().deleteFile(keys);
+        }
         this.remove(queryWrapper);
     }
 
     @Override
+    public void batchDeleteByDirectory(String directoryId) {
+        LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(File::getFileDirectoryId, directoryId);
+
+        List<File> files = this.list(queryWrapper);
+        List<String> keys = new ArrayList<>();
+        files.forEach(item -> keys.add(item.getFileKey()));
+        if (!keys.isEmpty()) {
+            filePluginFactory.filePlugin().deleteFile(keys);
+        }
+        this.remove(queryWrapper);
+    }
+
+    @Override
+    public Boolean countByDirectory(String directoryId) {
+        return this.count(new LambdaQueryWrapper<File>().eq(File::getFileDirectoryId, directoryId))>0;
+    }
+
+    @Override
     public void batchDelete(List<String> ids, AuthUser authUser) {
-        LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper();
+        LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.in(File::getId, ids);
 
         queryWrapper.eq(File::getUserEnums, authUser.getRole().name());
@@ -70,33 +86,41 @@ public class FileServiceImpl extends ServiceImpl<FileMapper, File> implements Fi
         List<File> files = this.list(queryWrapper);
         List<String> keys = new ArrayList<>();
         files.forEach(item -> keys.add(item.getFileKey()));
-        fileManagerPlugin.deleteFile(keys);
+        filePluginFactory.filePlugin().deleteFile(keys);
         this.remove(queryWrapper);
     }
 
     @Override
-    public IPage<File> customerPage(File file, SearchVO searchVO, PageVO pageVo) {
+    public IPage<File> customerPage(FileOwnerDTO fileOwnerDTO) {
         LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.like(StringUtils.isNotEmpty(file.getName()), File::getName, file.getName())
-                .like(StringUtils.isNotEmpty(file.getFileKey()), File::getFileKey, file.getFileKey())
-                .like(StringUtils.isNotEmpty(file.getFileType()), File::getFileType, file.getFileType())
-                .between(StringUtils.isNotEmpty(searchVO.getStartDate()) && StringUtils.isNotEmpty(searchVO.getEndDate()),
-                        File::getCreateTime, searchVO.getStartDate(), searchVO.getEndDate());
-        IPage<File> page = this.page(PageUtil.initPage(pageVo), queryWrapper);
-        return page;
+        queryWrapper.like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getName()), File::getName, fileOwnerDTO.getName())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getOwnerName()), File::getOwnerName,
+                fileOwnerDTO.getOwnerName())
+            .eq(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileDirectoryId()), File::getFileDirectoryId,
+                fileOwnerDTO.getFileDirectoryId())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileKey()), File::getFileKey, fileOwnerDTO.getFileKey())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileType()), File::getFileType,
+                fileOwnerDTO.getFileType()).between(
+                CharSequenceUtil.isNotEmpty(fileOwnerDTO.getStartDate()) && CharSequenceUtil.isNotEmpty(
+                    fileOwnerDTO.getEndDate()), File::getCreateTime, fileOwnerDTO.getStartDate(),
+                fileOwnerDTO.getEndDate());
+        return this.page(PageUtil.initPage(fileOwnerDTO), queryWrapper);
     }
 
     @Override
-    public IPage<File> customerPageOwner(FileOwnerDTO ownerDTO, File file, SearchVO searchVO, PageVO pageVo) {
+    public IPage<File> customerPageOwner(FileOwnerDTO fileOwnerDTO) {
         LambdaQueryWrapper<File> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StringUtils.isNotEmpty(ownerDTO.getOwnerId()), File::getOwnerId, ownerDTO.getOwnerId())
-                .eq(File::getUserEnums, ownerDTO.getUserEnums())
-                .like(StringUtils.isNotEmpty(file.getName()), File::getName, file.getName())
-                .like(StringUtils.isNotEmpty(file.getFileKey()), File::getFileKey, file.getFileKey())
-                .like(StringUtils.isNotEmpty(file.getFileType()), File::getFileType, file.getFileType())
-                .between(StringUtils.isNotEmpty(searchVO.getStartDate()) && StringUtils.isNotEmpty(searchVO.getEndDate()),
-                        File::getCreateTime, searchVO.getStartDate(), searchVO.getEndDate());
-        IPage<File> page = this.page(PageUtil.initPage(pageVo), queryWrapper);
-        return page;
+        queryWrapper.eq(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getOwnerId()), File::getOwnerId,
+                fileOwnerDTO.getOwnerId()).eq(File::getUserEnums, fileOwnerDTO.getUserEnums())
+            .eq(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileDirectoryId()), File::getFileDirectoryId,
+                fileOwnerDTO.getFileDirectoryId())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getName()), File::getName, fileOwnerDTO.getName())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileKey()), File::getFileKey, fileOwnerDTO.getFileKey())
+            .like(CharSequenceUtil.isNotEmpty(fileOwnerDTO.getFileType()), File::getFileType,
+                fileOwnerDTO.getFileType()).between(
+                CharSequenceUtil.isNotEmpty(fileOwnerDTO.getStartDate()) && CharSequenceUtil.isNotEmpty(
+                    fileOwnerDTO.getEndDate()), File::getCreateTime, fileOwnerDTO.getStartDate(),
+                fileOwnerDTO.getEndDate());
+        return this.page(PageUtil.initPage(fileOwnerDTO), queryWrapper);
     }
 }

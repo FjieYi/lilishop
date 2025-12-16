@@ -13,6 +13,9 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.springframework.data.elasticsearch.annotations.DateFormat;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.util.Date;
 
@@ -33,7 +36,7 @@ public class MemberCoupon extends BaseEntity {
     @ApiModelProperty(value = "从哪个模版领取的优惠券")
     private String couponId;
 
-    @ApiModelProperty(value = "商家id，如果是平台发送，这个值为 platform")
+    @ApiModelProperty(value = "商家id，如果是平台发送，这个值为 0")
     private String storeId;
 
     @ApiModelProperty(value = "商家名称，如果是平台，这个值为 platform")
@@ -74,10 +77,12 @@ public class MemberCoupon extends BaseEntity {
 
     @ApiModelProperty(value = "使用起始时间")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.custom, pattern = "yyyy-MM-dd HH:mm:ss || yyyy-MM-dd || yyyy/MM/dd HH:mm:ss|| yyyy/MM/dd ||epoch_millis")
     private Date startTime;
 
     @ApiModelProperty(value = "使用截止时间")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.custom, pattern = "yyyy-MM-dd HH:mm:ss || yyyy-MM-dd || yyyy/MM/dd HH:mm:ss|| yyyy/MM/dd ||epoch_millis")
     private Date endTime;
     /**
      * @see cn.lili.modules.promotion.entity.enums.CouponGetEnum
@@ -93,6 +98,7 @@ public class MemberCoupon extends BaseEntity {
 
     @ApiModelProperty(value = "核销时间")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @Field(type = FieldType.Date, format = DateFormat.custom, pattern = "yyyy-MM-dd HH:mm:ss || yyyy-MM-dd || yyyy/MM/dd HH:mm:ss|| yyyy/MM/dd ||epoch_millis")
     private Date consumptionTime;
 
     /**

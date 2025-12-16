@@ -20,10 +20,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 
@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
  * @since 2020-02-18 16:18:56
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class BrandServiceImpl extends ServiceImpl<BrandMapper, Brand> implements BrandService {
 
     /**
@@ -68,6 +67,14 @@ public class BrandServiceImpl extends ServiceImpl<BrandMapper, Brand> implements
             return this.list(new LambdaQueryWrapper<Brand>().in(Brand::getId, collect));
         }
         return new ArrayList<>();
+    }
+
+    @Override
+    public List<Map<String, Object>> getBrandsMapsByCategory(List<String> categoryIds, String columns) {
+        QueryWrapper<Brand> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select(columns);
+        queryWrapper.in("id", categoryIds);
+        return this.listMaps(queryWrapper);
     }
 
     @Override
@@ -111,7 +118,7 @@ public class BrandServiceImpl extends ServiceImpl<BrandMapper, Brand> implements
     /**
      * 校验绑定关系
      *
-     * @param brandIds
+     * @param brandIds 品牌Ids
      */
     private void checkBind(List<String> brandIds) {
         //分了绑定关系查询
@@ -132,18 +139,10 @@ public class BrandServiceImpl extends ServiceImpl<BrandMapper, Brand> implements
     }
 
     /**
-     * 校验绑定关系
-     *
-     * @param brandIds
-     */
-    private void checkoutGoods(List<String> brandIds) {
-    }
-
-    /**
      * 校验是否存在
      *
-     * @param brandId
-     * @return
+     * @param brandId 品牌ID
+     * @return 品牌
      */
     private Brand checkExist(String brandId) {
         Brand brand = getById(brandId);

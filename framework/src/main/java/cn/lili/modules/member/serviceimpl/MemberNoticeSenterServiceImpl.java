@@ -1,8 +1,8 @@
 package cn.lili.modules.member.serviceimpl;
 
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
-import cn.lili.common.utils.StringUtils;
 import cn.lili.modules.member.entity.dos.Member;
 import cn.lili.modules.member.entity.dos.MemberNotice;
 import cn.lili.modules.member.entity.dos.MemberNoticeSenter;
@@ -27,7 +27,7 @@ import java.util.List;
  * @since 2020/11/17 3:44 下午
  */
 @Service
-@Transactional(propagation = Propagation.REQUIRED, rollbackFor = java.lang.Exception.class)
+@Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
 public class MemberNoticeSenterServiceImpl extends ServiceImpl<MemberNoticeSenterMapper, MemberNoticeSenter> implements MemberNoticeSenterService {
 
     /**
@@ -42,6 +42,7 @@ public class MemberNoticeSenterServiceImpl extends ServiceImpl<MemberNoticeSente
     private MemberNoticeService memberNoticeService;
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean customSave(MemberNoticeSenter memberNoticeSenter) {
 
         if (this.saveOrUpdate(memberNoticeSenter)) {
@@ -49,7 +50,7 @@ public class MemberNoticeSenterServiceImpl extends ServiceImpl<MemberNoticeSente
             //如果是选中会员发送
             if (memberNoticeSenter.getSendType().equals(SendTypeEnum.SELECT.name())) {
                 //判定消息是否有效
-                if (!StringUtils.isEmpty(memberNoticeSenter.getMemberIds())) {
+                if (!CharSequenceUtil.isEmpty(memberNoticeSenter.getMemberIds())) {
                     String[] ids = memberNoticeSenter.getMemberIds().split(",");
                     MemberNotice memberNotice;
                     for (String id : ids) {
@@ -77,7 +78,7 @@ public class MemberNoticeSenterServiceImpl extends ServiceImpl<MemberNoticeSente
                 }
             }
             //防止没有会员导致报错
-            if (memberNotices.size() > 0) {
+            if (!memberNotices.isEmpty()) {
                 //批量保存
                 if (memberNoticeService.saveBatch(memberNotices)) {
                     return true;

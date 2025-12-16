@@ -4,8 +4,8 @@ import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.promotion.entity.dos.PromotionGoods;
+import cn.lili.modules.promotion.entity.dto.search.PromotionGoodsSearchParams;
 import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
-import cn.lili.modules.promotion.entity.vos.PromotionGoodsSearchParams;
 import cn.lili.modules.promotion.service.PromotionGoodsService;
 import cn.lili.modules.promotion.service.PromotionService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,7 +28,7 @@ import java.util.Map;
  **/
 @RestController
 @Api(tags = "管理端,促销接口")
-@RequestMapping("/manager/promotion")
+@RequestMapping("/manager/promotion/promotion")
 public class PromotionManagerController {
 
     @Autowired
@@ -37,8 +38,8 @@ public class PromotionManagerController {
 
     @GetMapping("/current")
     @ApiOperation(value = "获取当前进行中的促销活动")
-    public ResultMessage<Map<String, Object>> getCurrentPromotion() {
-        Map<String, Object> currentPromotion = promotionService.getCurrentPromotion();
+    public ResultMessage<Map<String, List<PromotionGoods>>> getCurrentPromotion() {
+        Map<String, List<PromotionGoods>> currentPromotion = promotionService.getCurrentPromotion();
         return ResultUtil.data(currentPromotion);
     }
 

@@ -3,9 +3,7 @@ package cn.lili.controller.other;
 import cn.hutool.core.text.CharSequenceUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import cn.lili.common.enums.ResultCode;
 import cn.lili.common.enums.ResultUtil;
-import cn.lili.common.exception.ServiceException;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.permission.SettingKeys;
@@ -35,7 +33,7 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 @RestController
 @Api(tags = "管理端,自定义分词接口")
-@RequestMapping("/manager/custom-words")
+@RequestMapping("/manager/other/customWords")
 public class CustomWordsController {
 
     /**
@@ -60,8 +58,9 @@ public class CustomWordsController {
         }
 
         JSONObject jsonObject = JSONUtil.parseObj(setting.getSettingValue());
+        //如果密钥不正确，返回空
         if (!secretKey.equals(jsonObject.get("secretKey"))) {
-            throw new ServiceException(ResultCode.CUSTOM_WORDS_SECRET_KEY_ERROR);
+            return "";
         }
 
         String res = customWordsService.deploy();

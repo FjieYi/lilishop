@@ -1,21 +1,22 @@
 package cn.lili.modules.promotion.serviceimpl;
 
+import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.modules.promotion.entity.dos.*;
-import cn.lili.modules.promotion.entity.enums.PromotionsScopeTypeEnum;
+import cn.lili.modules.promotion.entity.dto.search.PromotionGoodsSearchParams;
+import cn.lili.modules.promotion.entity.dto.search.SeckillSearchParams;
 import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
-import cn.lili.modules.promotion.entity.vos.*;
 import cn.lili.modules.promotion.service.*;
-import cn.lili.modules.search.entity.dos.EsGoodsIndex;
+import cn.lili.modules.promotion.tools.PromotionTools;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 促销业务层实现
@@ -25,7 +26,6 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class PromotionServiceImpl implements PromotionService {
     /**
      * 秒杀
@@ -63,6 +63,9 @@ public class PromotionServiceImpl implements PromotionService {
     @Autowired
     private PointsGoodsService pointsGoodsService;
 
+    @Autowired
+    private KanjiaActivityGoodsService kanjiaActivityGoodsService;
+
 
     /**
      * 获取当前进行的所有促销活动信息
@@ -70,72 +73,36 @@ public class PromotionServiceImpl implements PromotionService {
      * @return 当前促销活动集合
      */
     @Override
-    public Map<String, Object> getCurrentPromotion() {
-        Map<String, Object> resultMap = new HashMap<>(16);
-
-        SeckillSearchParams seckillSearchParams = new SeckillSearchParams();
-        seckillSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        //获取当前进行的秒杀活动活动
-        List<Seckill> seckillList = seckillService.listFindAll(seckillSearchParams);
-        if (seckillList != null && !seckillList.isEmpty()) {
-            for (Seckill seckill : seckillList) {
-                resultMap.put(PromotionTypeEnum.SECKILL.name(), seckill);
-            }
-        }
-        FullDiscountSearchParams fullDiscountSearchParams = new FullDiscountSearchParams();
-        fullDiscountSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        //获取当前进行的满优惠活动
-        List<FullDiscount> fullDiscountList = fullDiscountService.listFindAll(fullDiscountSearchParams);
-        if (fullDiscountList != null && !fullDiscountList.isEmpty()) {
-            for (FullDiscount fullDiscount : fullDiscountList) {
-                resultMap.put(PromotionTypeEnum.FULL_DISCOUNT.name(), fullDiscount);
-            }
-        }
-        PintuanSearchParams pintuanSearchParams = new PintuanSearchParams();
-        pintuanSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        //获取当前进行的拼团活动
-        List<Pintuan> pintuanList = pintuanService.listFindAll(pintuanSearchParams);
-        if (pintuanList != null && !pintuanList.isEmpty()) {
-            for (Pintuan pintuan : pintuanList) {
-                resultMap.put(PromotionTypeEnum.PINTUAN.name(), pintuan);
-            }
-        }
-        return resultMap;
+    public Map<String, List<PromotionGoods>> getCurrentPromotion() {
+        PromotionGoodsSearchParams searchParams = new PromotionGoodsSearchParams();
+        searchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
+        List<PromotionGoods> promotionGoods = promotionGoodsService.listFindAll(searchParams);
+        return promotionGoods.stream().collect(Collectors.groupingBy(PromotionGoods::getPromotionType));
     }
 
     /**
      * 根据商品索引获取当前商品索引的所有促销活动信息
      *
-     * @param index 商品索引
+     * @param storeId    店铺id
+     * @param goodsSkuId 商品skuId
      * @return 当前促销活动集合
      */
     @Override
-    public Map<String, Object> getGoodsCurrentPromotionMap(EsGoodsIndex index) {
+    public Map<String, Object> getGoodsSkuPromotionMap(String storeId, String goodsSkuId) {
+        String storeIds = storeId + "," + PromotionTools.PLATFORM_ID;
+        List<PromotionGoods> promotionGoodsList = promotionGoodsService.findSkuValidPromotion(goodsSkuId, storeIds);
+        return wrapperPromotionMapList(promotionGoodsList);
+    }
+
+    @Override
+    public void removeByGoodsIds(String goodsIdsJsonStr) {
+        List<String> goodsIds = JSONUtil.toList(goodsIdsJsonStr, String.class);
+        promotionGoodsService.deletePromotionGoodsByGoods(goodsIds);
+        kanjiaActivityGoodsService.deleteByGoodsIds(goodsIds);
+    }
+    @Override
+    public Map<String, Object> wrapperPromotionMapList(List<PromotionGoods> promotionGoodsList) {
         Map<String, Object> promotionMap = new HashMap<>();
-        FullDiscountSearchParams fullDiscountSearchParams = new FullDiscountSearchParams();
-        fullDiscountSearchParams.setScopeType(PromotionsScopeTypeEnum.ALL.name());
-        fullDiscountSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        List<FullDiscount> fullDiscountVOS = this.fullDiscountService.listFindAll(fullDiscountSearchParams);
-        for (FullDiscount fullDiscount : fullDiscountVOS) {
-            if (index.getStoreId().equals(fullDiscount.getStoreId())) {
-                String fullDiscountKey = PromotionTypeEnum.FULL_DISCOUNT.name() + "-" + fullDiscount.getId();
-                promotionMap.put(fullDiscountKey, fullDiscount);
-            }
-        }
-        CouponSearchParams couponSearchParams = new CouponSearchParams();
-        couponSearchParams.setScopeType(PromotionsScopeTypeEnum.ALL.name());
-        couponSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        List<Coupon> couponVOS = this.couponService.listFindAll(couponSearchParams);
-        for (Coupon coupon : couponVOS) {
-            if (("platform").equals(coupon.getStoreId()) || index.getStoreId().equals(coupon.getStoreId())) {
-                String couponKey = PromotionTypeEnum.COUPON.name() + "-" + coupon.getId();
-                promotionMap.put(couponKey, coupon);
-            }
-        }
-        PromotionGoodsSearchParams promotionGoodsSearchParams = new PromotionGoodsSearchParams();
-        promotionGoodsSearchParams.setSkuId(index.getId());
-        promotionGoodsSearchParams.setPromotionStatus(PromotionsStatusEnum.START.name());
-        List<PromotionGoods> promotionGoodsList = promotionGoodsService.listFindAll(promotionGoodsSearchParams);
         for (PromotionGoods promotionGoods : promotionGoodsList) {
             String esPromotionKey = promotionGoods.getPromotionType() + "-" + promotionGoods.getPromotionId();
             switch (PromotionTypeEnum.valueOf(promotionGoods.getPromotionType())) {
@@ -146,14 +113,13 @@ public class PromotionServiceImpl implements PromotionService {
                 case PINTUAN:
                     Pintuan pintuan = pintuanService.getById(promotionGoods.getPromotionId());
                     promotionMap.put(esPromotionKey, pintuan);
-                    index.setPromotionPrice(promotionGoods.getPrice());
                     break;
                 case FULL_DISCOUNT:
                     FullDiscount fullDiscount = fullDiscountService.getById(promotionGoods.getPromotionId());
                     promotionMap.put(esPromotionKey, fullDiscount);
                     break;
                 case SECKILL:
-                    this.getGoodsCurrentSeckill(promotionGoods, promotionMap, index);
+                    this.getGoodsCurrentSeckill(esPromotionKey, promotionGoods, promotionMap);
                     break;
                 case POINTS_GOODS:
                     PointsGoods pointsGoods = pointsGoodsService.getById(promotionGoods.getPromotionId());
@@ -166,31 +132,20 @@ public class PromotionServiceImpl implements PromotionService {
         return promotionMap;
     }
 
-
-    private void getGoodsCurrentSeckill(PromotionGoods promotionGoods, Map<String, Object> promotionMap, EsGoodsIndex index) {
+    private void getGoodsCurrentSeckill(String esPromotionKey, PromotionGoods promotionGoods, Map<String, Object> promotionMap) {
         Seckill seckill = seckillService.getById(promotionGoods.getPromotionId());
         SeckillSearchParams searchParams = new SeckillSearchParams();
         searchParams.setSeckillId(promotionGoods.getPromotionId());
         searchParams.setSkuId(promotionGoods.getSkuId());
         List<SeckillApply> seckillApplyList = seckillApplyService.getSeckillApplyList(searchParams);
         if (seckillApplyList != null && !seckillApplyList.isEmpty()) {
-            SeckillApply seckillApply = seckillApplyList.get(0);
-            int nextHour = 23;
             String[] split = seckill.getHours().split(",");
             int[] hoursSored = Arrays.stream(split).mapToInt(Integer::parseInt).toArray();
             Arrays.sort(hoursSored);
-            for (int i : hoursSored) {
-                if (seckillApply.getTimeLine() < i) {
-                    nextHour = i;
-                }
-            }
-            String seckillKey = promotionGoods.getPromotionType() + "-" + nextHour;
             seckill.setStartTime(promotionGoods.getStartTime());
             seckill.setEndTime(promotionGoods.getEndTime());
-            promotionMap.put(seckillKey, seckill);
-            index.setPromotionPrice(promotionGoods.getPrice());
+            promotionMap.put(esPromotionKey, seckill);
         }
-
     }
 
 }

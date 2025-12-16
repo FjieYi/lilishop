@@ -1,16 +1,20 @@
 package cn.lili.modules.goods.entity.dos;
 
+import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.text.CharSequenceUtil;
 import cn.hutool.http.HtmlUtil;
 import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
+import cn.lili.modules.goods.entity.dto.DraftGoodsDTO;
 import cn.lili.modules.goods.entity.dto.GoodsOperationDTO;
+import cn.lili.modules.goods.entity.enums.GoodsAuthEnum;
+import cn.lili.modules.goods.entity.enums.GoodsSalesModeEnum;
 import cn.lili.modules.goods.entity.enums.GoodsStatusEnum;
+import cn.lili.modules.goods.entity.enums.GoodsTypeEnum;
 import cn.lili.mybatis.BaseEntity;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xkcoding.http.util.StringUtil;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -106,6 +110,9 @@ public class Goods extends BaseEntity {
     @ApiModelProperty(value = "运费模板id")
     private String templateId;
 
+    /**
+     * @see GoodsAuthEnum
+     */
     @ApiModelProperty(value = "审核状态")
     private String authFlag;
 
@@ -128,6 +135,9 @@ public class Goods extends BaseEntity {
     @ApiModelProperty(value = "是否为推荐商品", required = true)
     private Boolean recommend;
 
+    /**
+     * @see cn.lili.modules.goods.entity.enums.GoodsSalesModeEnum
+     */
     @ApiModelProperty(value = "销售模式", required = true)
     private String salesModel;
 
@@ -139,7 +149,6 @@ public class Goods extends BaseEntity {
     private String goodsType;
 
     @ApiModelProperty(value = "商品参数json", hidden = true)
-    @JsonIgnore
     private String params;
 
 
@@ -174,21 +183,51 @@ public class Goods extends BaseEntity {
             if (!sku.containsKey("sn") || sku.get("sn") == null) {
                 throw new ServiceException(ResultCode.GOODS_SKU_SN_ERROR);
             }
-            if (!sku.containsKey("price") || StringUtil.isEmpty(sku.get("price").toString()) || Convert.toDouble(sku.get("price")) <= 0) {
+            if ((!sku.containsKey("price") || StringUtil.isEmpty(sku.get("price").toString()) || Convert.toDouble(sku.get("price")) <= 0) && !goodsOperationDTO.getSalesModel().equals(GoodsSalesModeEnum.WHOLESALE.name())) {
                 throw new ServiceException(ResultCode.GOODS_SKU_PRICE_ERROR);
             }
-            if (!sku.containsKey("cost") || StringUtil.isEmpty(sku.get("cost").toString()) || Convert.toDouble(sku.get("cost")) <= 0) {
+            if ((!sku.containsKey("cost") || StringUtil.isEmpty(sku.get("cost").toString()) || Convert.toDouble(sku.get("cost")) <= 0) && !goodsOperationDTO.getSalesModel().equals(GoodsSalesModeEnum.WHOLESALE.name())) {
                 throw new ServiceException(ResultCode.GOODS_SKU_COST_ERROR);
             }
             //虚拟商品没有重量字段
-            if (!sku.containsKey("weight") || sku.containsKey("weight") && (StringUtil.isEmpty(sku.get("weight").toString()) || Convert.toDouble(sku.get("weight").toString()) < 0)) {
+            if (this.goodsType.equals(GoodsTypeEnum.PHYSICAL_GOODS.name()) && (!sku.containsKey("weight") || sku.containsKey("weight") && (StringUtil.isEmpty(sku.get("weight").toString()) || Convert.toDouble(sku.get("weight").toString()) < 0))) {
                 throw new ServiceException(ResultCode.GOODS_SKU_WEIGHT_ERROR);
             }
             if (!sku.containsKey("quantity") || StringUtil.isEmpty(sku.get("quantity").toString()) || Convert.toInt(sku.get("quantity").toString()) < 0) {
                 throw new ServiceException(ResultCode.GOODS_SKU_QUANTITY_ERROR);
             }
+            sku.values().forEach(i -> {
+                if (CharSequenceUtil.isBlank(i.toString())) {
+                    throw new ServiceException(ResultCode.MUST_HAVE_GOODS_SKU_VALUE);
+                }
+            });
+
 
         }
+    }
+
+    public Goods(DraftGoodsDTO goodsDTO) {
+        this.goodsName = goodsDTO.getGoodsName();
+        this.categoryPath = goodsDTO.getCategoryPath();
+        this.storeCategoryPath = goodsDTO.getStoreCategoryPath();
+        this.brandId = goodsDTO.getBrandId();
+        this.templateId = goodsDTO.getTemplateId();
+        this.recommend = goodsDTO.getRecommend();
+        this.sellingPoint = goodsDTO.getSellingPoint();
+        this.salesModel = goodsDTO.getSalesModel();
+        this.goodsUnit = goodsDTO.getGoodsUnit();
+        this.intro = goodsDTO.getIntro();
+        this.mobileIntro = goodsDTO.getMobileIntro();
+        this.goodsVideo = goodsDTO.getGoodsVideo();
+        this.price = goodsDTO.getPrice();
+        if (CollectionUtil.isNotEmpty(goodsDTO.getGoodsParamsDTOList())){
+            this.params = JSONUtil.toJsonStr(goodsDTO.getGoodsParamsDTOList());
+        }
+        //如果立即上架则
+        this.marketEnable = GoodsStatusEnum.DOWN.name();
+        this.goodsType = goodsDTO.getGoodsType();
+        this.grade = 100D;
+
     }
 
     public String getIntro() {

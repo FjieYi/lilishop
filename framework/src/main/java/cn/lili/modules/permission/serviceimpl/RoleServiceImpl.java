@@ -1,7 +1,10 @@
 package cn.lili.modules.permission.serviceimpl;
 
+import cn.lili.cache.Cache;
+import cn.lili.cache.CachePrefix;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
+import cn.lili.common.security.enums.UserEnums;
 import cn.lili.modules.permission.entity.dos.Role;
 import cn.lili.modules.permission.mapper.RoleMapper;
 import cn.lili.modules.permission.service.DepartmentRoleService;
@@ -23,7 +26,6 @@ import java.util.List;
  * @since 2020/11/17 3:50 下午
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements RoleService {
 
     /**
@@ -39,6 +41,8 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
 
     @Autowired
     private RoleMenuService roleMenuService;
+    @Autowired
+    private Cache cache;
 
     @Override
     public List<Role> findByDefaultRole(Boolean defaultRole) {
@@ -48,6 +52,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteRoles(List<String> roleIds) {
         QueryWrapper queryWrapper = new QueryWrapper<>();
         queryWrapper.in("role_id", roleIds);
@@ -61,5 +66,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
         this.removeByIds(roleIds);
         //删除角色与菜单关联
         roleMenuService.remove(queryWrapper);
+        cache.vagueDel(CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER));
+        cache.vagueDel(CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER));
     }
 }

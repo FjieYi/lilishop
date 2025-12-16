@@ -8,7 +8,6 @@ import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.Token;
-import cn.lili.common.utils.StringUtils;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.common.vo.SearchVO;
@@ -17,7 +16,6 @@ import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.entity.dto.AdminUserDTO;
 import cn.lili.modules.permission.entity.vo.AdminUserVO;
 import cn.lili.modules.permission.service.AdminUserService;
-import cn.lili.modules.permission.service.DepartmentService;
 import cn.lili.modules.verification.entity.enums.VerificationEnums;
 import cn.lili.modules.verification.service.VerificationService;
 import cn.lili.mybatis.util.PageUtil;
@@ -27,12 +25,12 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -45,14 +43,11 @@ import java.util.List;
 @Slf4j
 @RestController
 @Api(tags = "管理员")
-@RequestMapping("/manager/user")
-@Transactional(rollbackFor = Exception.class)
+@RequestMapping("/manager/passport/user")
 @Validated
 public class AdminUserManagerController {
     @Autowired
     private AdminUserService adminUserService;
-    @Autowired
-    private DepartmentService departmentService;
     /**
      * 会员
      */
@@ -62,7 +57,7 @@ public class AdminUserManagerController {
     @Autowired
     private VerificationService verificationService;
 
-    @GetMapping(value = "/login")
+    @PostMapping(value = "/login")
     @ApiOperation(value = "登录管理员")
     public ResultMessage<Token> login(@NotNull(message = "用户名不能为空") @RequestParam String username,
                                       @NotNull(message = "密码不能为空") @RequestParam String password,
@@ -90,13 +85,10 @@ public class AdminUserManagerController {
 
     @GetMapping(value = "/info")
     @ApiOperation(value = "获取当前登录用户接口")
-    public ResultMessage<AdminUserVO> getUserInfo() {
+    public ResultMessage<AdminUser> getUserInfo() {
         AuthUser tokenUser = UserContext.getCurrentUser();
         if (tokenUser != null) {
-            AdminUserVO adminUser = new AdminUserVO(adminUserService.findByUsername(tokenUser.getUsername()));
-            if (StringUtils.isNotEmpty(adminUser.getDepartmentId())) {
-                adminUser.setDepartmentTitle(departmentService.getById(adminUser.getDepartmentId()).getTitle());
-            }
+            AdminUser adminUser = adminUserService.findByUsername(tokenUser.getUsername());
             adminUser.setPassword(null);
             return ResultUtil.data(adminUser);
         }
@@ -170,16 +162,17 @@ public class AdminUserManagerController {
     @ApiOperation(value = "添加用户")
     public ResultMessage<Object> register(@Valid AdminUserDTO adminUser,
                                           @RequestParam(required = false) List<String> roles) {
-        int rolesMaxSize=10;
+        int rolesMaxSize = 10;
         try {
             if (roles != null && roles.size() >= rolesMaxSize) {
                 throw new ServiceException(ResultCode.PERMISSION_BEYOND_TEN);
             }
             adminUserService.saveAdminUser(adminUser, roles);
+            return ResultUtil.success();
         } catch (Exception e) {
             log.error("添加用户错误", e);
+            return ResultUtil.error(ResultCode.USER_ADD_ERROR);
         }
-        return ResultUtil.success();
     }
 
     @PutMapping(value = "/enable/{userId}")
@@ -192,6 +185,14 @@ public class AdminUserManagerController {
         }
         user.setStatus(status);
         adminUserService.updateById(user);
+
+        //登出用户
+        if (Boolean.FALSE.equals(status)) {
+            List<String> userIds = new ArrayList<>();
+            userIds.add(userId);
+            adminUserService.logout(userIds);
+        }
+
         return ResultUtil.success();
     }
 

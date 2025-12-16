@@ -108,7 +108,7 @@ spring:
     props:
       #是否打印逻辑SQL语句和实际SQL语句，建议调试时打印，在生产环境关闭
       sql:
-        show: true
+        show: false
 
 # 忽略鉴权url
 ignored:
@@ -119,7 +119,8 @@ ignored:
     - /MP_verify_qSyvBPhDsPdxvOhC.txt
     - /weixin/**
     - /source/**
-    - /store/login/**
+    - /store/passport/login/**
+    - /store/passport/login/refresh/**
     - /druid/**
     - /swagger-ui.html
     - /doc.html
@@ -240,6 +241,8 @@ lili:
       order-group: lili_order_group
       member-topic: lili_member_topic
       member-group: lili_member_group
+      store-topic: lili_store_topic
+      store-group: lili_store_group
       other-topic: lili_other_topic
       other-group: lili_other_group
       notice-topic: lili_notice_topic

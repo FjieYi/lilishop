@@ -7,10 +7,14 @@ import cn.lili.common.security.context.UserContext;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.promotion.entity.dos.MemberCoupon;
+import cn.lili.modules.promotion.entity.dto.CouponActivityTrigger;
+import cn.lili.modules.promotion.entity.dto.search.CouponSearchParams;
+import cn.lili.modules.promotion.entity.dto.search.MemberCouponSearchParams;
+import cn.lili.modules.promotion.entity.enums.CouponActivityTypeEnum;
 import cn.lili.modules.promotion.entity.enums.CouponGetEnum;
 import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
-import cn.lili.modules.promotion.entity.vos.CouponSearchParams;
 import cn.lili.modules.promotion.entity.vos.CouponVO;
+import cn.lili.modules.promotion.service.CouponActivityService;
 import cn.lili.modules.promotion.service.CouponService;
 import cn.lili.modules.promotion.service.MemberCouponService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -45,10 +50,37 @@ public class CouponBuyerController {
     private CouponService couponService;
 
     /**
+     * 优惠券活动
+     */
+    @Autowired
+    private CouponActivityService couponActivityService;
+
+    /**
      * 会员优惠券
      */
     @Autowired
     private MemberCouponService memberCouponService;
+
+    @GetMapping("/activity")
+    @ApiOperation(value = "自动领取优惠券")
+    public ResultMessage<List<MemberCoupon>> activity() {
+        if (UserContext.getCurrentUser() == null) {
+            return ResultUtil.success();
+        }
+        List<MemberCoupon> memberCouponList = couponActivityService.trigger(
+                CouponActivityTrigger.builder()
+                        .couponActivityTypeEnum(CouponActivityTypeEnum.AUTO_COUPON)
+                        .nickName(UserContext.getCurrentUser().getNickName())
+                        .userId(UserContext.getCurrentUser().getId())
+                        .build());
+        memberCouponList.addAll(couponActivityService.trigger(
+                CouponActivityTrigger.builder()
+                        .couponActivityTypeEnum(CouponActivityTypeEnum.SPECIFY)
+                        .nickName(UserContext.getCurrentUser().getNickName())
+                        .userId(UserContext.getCurrentUser().getId())
+                        .build()));
+        return ResultUtil.data(memberCouponList);
+    }
 
     @GetMapping
     @ApiOperation(value = "获取可领取优惠券列表")
@@ -61,7 +93,7 @@ public class CouponBuyerController {
 
     @ApiOperation(value = "获取当前会员的优惠券列表")
     @GetMapping("/getCoupons")
-    public ResultMessage<IPage<MemberCoupon>> getCoupons(CouponSearchParams param, PageVO pageVo) {
+    public ResultMessage<IPage<MemberCoupon>> getCoupons(MemberCouponSearchParams param, PageVO pageVo) {
         AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
         param.setMemberId(currentUser.getId());
         return ResultUtil.data(memberCouponService.getMemberCoupons(param, pageVo));
@@ -69,7 +101,7 @@ public class CouponBuyerController {
 
     @ApiOperation(value = "获取当前会员的对于当前商品可使用的优惠券列表")
     @GetMapping("/canUse")
-    public ResultMessage<IPage<MemberCoupon>> getCouponsByCanUse(CouponSearchParams param, Double totalPrice, PageVO pageVo) {
+    public ResultMessage<IPage<MemberCoupon>> getCouponsByCanUse(MemberCouponSearchParams param, Double totalPrice, PageVO pageVo) {
         AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
         param.setMemberId(currentUser.getId());
         return ResultUtil.data(memberCouponService.getMemberCouponsByCanUse(param, totalPrice, pageVo));

@@ -1,17 +1,21 @@
 package cn.lili.modules.order.order.entity.dos;
 
-import cn.hutool.core.util.StrUtil;
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.ClientTypeEnum;
 import cn.lili.common.enums.PromotionTypeEnum;
+import cn.lili.common.security.sensitive.Sensitive;
+import cn.lili.common.security.sensitive.enums.SensitiveStrategy;
 import cn.lili.common.utils.BeanUtil;
 import cn.lili.modules.goods.entity.enums.GoodsTypeEnum;
+import cn.lili.modules.order.cart.entity.dto.MemberCouponDTO;
 import cn.lili.modules.order.cart.entity.dto.TradeDTO;
 import cn.lili.modules.order.cart.entity.enums.CartTypeEnum;
 import cn.lili.modules.order.cart.entity.enums.DeliveryMethodEnum;
 import cn.lili.modules.order.cart.entity.vo.CartVO;
 import cn.lili.modules.order.order.entity.dto.PriceDetailDTO;
 import cn.lili.modules.order.order.entity.enums.*;
+import cn.lili.modules.payment.entity.enums.PaymentMethodEnum;
 import cn.lili.mybatis.BaseEntity;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -56,6 +60,7 @@ public class Order extends BaseEntity {
     private String memberId;
 
     @ApiModelProperty(value = "用户名")
+    @Sensitive(strategy = SensitiveStrategy.PHONE)
     private String memberName;
 
     /**
@@ -78,6 +83,9 @@ public class Order extends BaseEntity {
     @ApiModelProperty(value = "第三方付款流水号")
     private String receivableNo;
 
+    /**
+     * @see PaymentMethodEnum
+     */
     @ApiModelProperty(value = "支付方式")
     private String paymentMethod;
 
@@ -140,6 +148,9 @@ public class Order extends BaseEntity {
     @ApiModelProperty(value = "买家订单备注")
     private String remark;
 
+    @ApiModelProperty(value = "卖家订单备注")
+    private String sellerRemark;
+
     @ApiModelProperty(value = "订单取消原因")
     private String cancelReason;
 
@@ -181,7 +192,7 @@ public class Order extends BaseEntity {
     @ApiModelProperty(value = "订单促销类型")
     private String orderPromotionType;
 
-    @ApiModelProperty(value = "价格详情")
+    @ApiModelProperty(value = "价格价格详情")
     private String priceDetail;
 
     @ApiModelProperty(value = "订单是否支持原路退回")
@@ -198,6 +209,18 @@ public class Order extends BaseEntity {
 
     @ApiModelProperty(value = "使用的平台会员优惠券id")
     private String usePlatformMemberCouponId;
+
+    @ApiModelProperty(value = "qrCode  实物为提货码  虚拟货物为账号")
+    private String qrCode;
+
+    @ApiModelProperty(value = "自提点地址")
+    private String storeAddressPath;
+
+    @ApiModelProperty(value = "自提点电话")
+    private String storeAddressMobile;
+
+    @ApiModelProperty(value = "自提点地址经纬度")
+    private String storeAddressCenter;
 
     /**
      * 构建订单
@@ -220,13 +243,21 @@ public class Order extends BaseEntity {
         this.setDeliverStatus(DeliverStatusEnum.UNDELIVERED.name());
         this.setTradeSn(tradeDTO.getSn());
         this.setRemark(cartVO.getRemark());
-        this.setFreightPrice(tradeDTO.getPriceDetailDTO().getFreightPrice());
+        this.setFreightPrice(cartVO.getPriceDetailDTO().getFreightPrice());
         //会员收件信息
-        this.setConsigneeAddressIdPath(tradeDTO.getMemberAddress().getConsigneeAddressIdPath());
-        this.setConsigneeAddressPath(tradeDTO.getMemberAddress().getConsigneeAddressPath());
-        this.setConsigneeDetail(tradeDTO.getMemberAddress().getDetail());
-        this.setConsigneeMobile(tradeDTO.getMemberAddress().getMobile());
-        this.setConsigneeName(tradeDTO.getMemberAddress().getName());
+        if (tradeDTO.getMemberAddress() != null && DeliveryMethodEnum.LOGISTICS.name().equals(cartVO.getDeliveryMethod())) {
+            this.setConsigneeAddressIdPath(tradeDTO.getMemberAddress().getConsigneeAddressIdPath());
+            this.setConsigneeAddressPath(tradeDTO.getMemberAddress().getConsigneeAddressPath());
+            this.setConsigneeDetail(tradeDTO.getMemberAddress().getDetail());
+            this.setConsigneeMobile(tradeDTO.getMemberAddress().getMobile());
+            this.setConsigneeName(tradeDTO.getMemberAddress().getName());
+        }
+        //自提点信息
+        if (tradeDTO.getStoreAddress() != null && DeliveryMethodEnum.SELF_PICK_UP.name().equals(cartVO.getDeliveryMethod())) {
+            this.setStoreAddressPath(tradeDTO.getStoreAddress().getAddress());
+            this.setStoreAddressMobile(tradeDTO.getStoreAddress().getMobile());
+            this.setStoreAddressCenter(tradeDTO.getStoreAddress().getCenter());
+        }
         //平台优惠券判定
         if (tradeDTO.getPlatformCoupon() != null) {
             this.setUsePlatformMemberCouponId(tradeDTO.getPlatformCoupon().getMemberCoupon().getId());
@@ -234,8 +265,8 @@ public class Order extends BaseEntity {
         //店铺优惠券判定
         if (tradeDTO.getStoreCoupons() != null && !tradeDTO.getStoreCoupons().isEmpty()) {
             StringBuilder storeCouponIds = new StringBuilder();
-            for (String s : tradeDTO.getStoreCoupons().keySet()) {
-                storeCouponIds.append(s).append(",");
+            for (MemberCouponDTO value : tradeDTO.getStoreCoupons().values()) {
+                storeCouponIds.append(value.getMemberCoupon().getId()).append(",");
             }
             this.setUseStoreMemberCouponIds(storeCouponIds.toString());
         }
@@ -258,12 +289,14 @@ public class Order extends BaseEntity {
         //判断是否为普通订单、促销订单
         if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.CART) || tradeDTO.getCartTypeEnum().equals(CartTypeEnum.BUY_NOW)) {
             this.setOrderType(OrderTypeEnum.NORMAL.name());
+            this.setOrderPromotionType(OrderPromotionTypeEnum.NORMAL.name());
         } else if (tradeDTO.getCartTypeEnum().equals(CartTypeEnum.VIRTUAL)) {
             this.setOrderType(OrderTypeEnum.VIRTUAL.name());
+            this.setOrderPromotionType(OrderPromotionTypeEnum.NORMAL.name());
         } else {
             //促销订单（拼团、积分）-判断购买的是虚拟商品还是实物商品
             String goodsType = cartVO.getCheckedSkuList().get(0).getGoodsSku().getGoodsType();
-            if (StrUtil.isEmpty(goodsType) || goodsType.equals(GoodsTypeEnum.PHYSICAL_GOODS.name())) {
+            if (CharSequenceUtil.isEmpty(goodsType) || goodsType.equals(GoodsTypeEnum.PHYSICAL_GOODS.name())) {
                 this.setOrderType(OrderTypeEnum.NORMAL.name());
             } else {
                 this.setOrderType(OrderTypeEnum.VIRTUAL.name());
@@ -272,7 +305,7 @@ public class Order extends BaseEntity {
             this.setOrderPromotionType(tradeDTO.getCartTypeEnum().name());
 
             //判断是否为拼团订单，如果为拼团订单获取拼团ID，判断是否为主订单
-            if (tradeDTO.getCartTypeEnum().name().equals(PromotionTypeEnum.PINTUAN.name())) {
+            if (tradeDTO.getCartTypeEnum().name().equals(PromotionTypeEnum.PINTUAN.name()) && cartVO.getCheckedSkuList().get(0).getPromotionMap() != null && !cartVO.getCheckedSkuList().get(0).getPromotionMap().isEmpty()) {
                 Optional<String> pintuanPromotions = cartVO.getCheckedSkuList().get(0).getPromotionMap().keySet().stream().filter(i -> i.contains(PromotionTypeEnum.PINTUAN.name())).findFirst();
                 pintuanPromotions.ifPresent(s -> promotionId = s.split("-")[1]);
             }

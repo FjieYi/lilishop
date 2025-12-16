@@ -12,6 +12,7 @@ import cn.lili.modules.goods.entity.vos.StoreGoodsLabelVO;
 import cn.lili.modules.goods.mapper.StoreGoodsLabelMapper;
 import cn.lili.modules.goods.service.StoreGoodsLabelService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 店铺商品分类业务层实现
@@ -30,7 +32,6 @@ import java.util.List;
  * @since 2020-03-07 16:18:56
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class StoreGoodsLabelServiceImpl extends ServiceImpl<StoreGoodsLabelMapper, StoreGoodsLabel> implements StoreGoodsLabelService {
 
     /**
@@ -57,8 +58,9 @@ public class StoreGoodsLabelServiceImpl extends ServiceImpl<StoreGoodsLabelMappe
                     StoreGoodsLabelVO storeGoodsLabelVO = new StoreGoodsLabelVO(storeGoodsLabel.getId(), storeGoodsLabel.getLabelName(), storeGoodsLabel.getLevel(), storeGoodsLabel.getSortOrder());
                     List<StoreGoodsLabelVO> storeGoodsLabelVOChildList = new ArrayList<>();
                     list.stream()
-                            .filter(label -> label.getParentId().equals(storeGoodsLabel.getId()))
+                            .filter(label -> label.getParentId() != null && label.getParentId().equals(storeGoodsLabel.getId()))
                             .forEach(storeGoodsLabelChild -> storeGoodsLabelVOChildList.add(new StoreGoodsLabelVO(storeGoodsLabelChild.getId(), storeGoodsLabelChild.getLabelName(), storeGoodsLabelChild.getLevel(), storeGoodsLabelChild.getSortOrder())));
+                    storeGoodsLabelVOChildList.sort(Comparator.comparing(StoreGoodsLabelVO::getSortOrder));
                     storeGoodsLabelVO.setChildren(storeGoodsLabelVOChildList);
                     storeGoodsLabelVOList.add(storeGoodsLabelVO);
                 });
@@ -67,7 +69,7 @@ public class StoreGoodsLabelServiceImpl extends ServiceImpl<StoreGoodsLabelMappe
         storeGoodsLabelVOList.sort(Comparator.comparing(StoreGoodsLabelVO::getSortOrder));
 
         if (!storeGoodsLabelVOList.isEmpty()) {
-            cache.put(CachePrefix.CATEGORY.getPrefix() + storeId + "tree", storeGoodsLabelVOList);
+            cache.put(CachePrefix.CATEGORY.getPrefix() + storeId, storeGoodsLabelVOList);
         }
         return storeGoodsLabelVOList;
     }
@@ -84,6 +86,14 @@ public class StoreGoodsLabelServiceImpl extends ServiceImpl<StoreGoodsLabelMappe
     }
 
     @Override
+    public List<Map<String, Object>> listMapsByStoreIds(List<String> ids, String columns) {
+        QueryWrapper<StoreGoodsLabel> queryWrapper = new QueryWrapper<StoreGoodsLabel>().in("id", ids).orderByAsc("level");
+        queryWrapper.select(columns);
+        return this.listMaps(queryWrapper);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public StoreGoodsLabel addStoreGoodsLabel(StoreGoodsLabel storeGoodsLabel) {
         //获取当前登录商家账号
         AuthUser tokenUser = UserContext.getCurrentUser();
@@ -99,6 +109,7 @@ public class StoreGoodsLabelServiceImpl extends ServiceImpl<StoreGoodsLabelMappe
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public StoreGoodsLabel editStoreGoodsLabel(StoreGoodsLabel storeGoodsLabel) {
         //修改当前店铺的商品分类
         AuthUser tokenUser = UserContext.getCurrentUser();

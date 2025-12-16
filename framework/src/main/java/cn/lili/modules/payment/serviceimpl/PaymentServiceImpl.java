@@ -7,7 +7,6 @@ import cn.lili.modules.payment.service.PaymentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -19,7 +18,6 @@ import java.util.List;
  */
 @Slf4j
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class PaymentServiceImpl implements PaymentService {
 
     @Autowired
@@ -30,9 +28,12 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public void success(PaymentSuccessParams paymentSuccessParams) {
 
+        //支付状态
         boolean paymentResult = cashierSupport.paymentResult(paymentSuccessParams.getPayParam());
+
+        //已支付则返回
         if (paymentResult) {
-            log.warn("订单支付状态后，调用支付成功接口，流水号：{}", paymentSuccessParams.getReceivableNo());
+            log.warn("收银台重复收款，流水号：{}", paymentSuccessParams.getReceivableNo());
             return;
         }
 

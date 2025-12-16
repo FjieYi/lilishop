@@ -3,12 +3,19 @@ server:
 
   servlet:
     context-path: /
-
-  tomcat:
-    uri-encoding: UTF-8
-    threads:
-      min-spare: 50
-      max: 1000
+#
+#  tomcat:
+#    #最大链接数，默认不设置，默认是10000
+#    max-connections: 6500
+#    #最大等待队列长度，允许HTTP请求缓存到请求队列的最大个数，默认不限制
+#    accept-count: 1000
+#    threads:
+#      #最少闲置
+#      min-spare: 50
+#      #最大线程数  ，默认是200
+#      max: 800
+  netty:
+    connection-timeout:
 
 # 与Spring Boot 2一样，默认情况下，大多数端点都不通过http公开，我们公开了所有端点。对于生产，您应该仔细选择要公开的端点。
 management:
@@ -69,10 +76,10 @@ spring:
         url: jdbc:mysql://127.0.0.1:3306/lilishop?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
         username: root
         password: lilishop
-        maxActive: 20
-        initialSize: 5
+        maxActive: 50
+        initialSize: 10
         maxWait: 60000
-        minIdle: 5
+        minIdle: 10
         timeBetweenEvictionRunsMillis: 60000
         minEvictableIdleTimeMillis: 300000
         validationQuery: SELECT 1 FROM DUAL
@@ -110,7 +117,7 @@ spring:
     props:
       #是否打印逻辑SQL语句和实际SQL语句，建议调试时打印，在生产环境关闭
       sql:
-        show: true
+        show: false
 
 # 忽略TOKEN 鉴权 的url
 ignored:
@@ -121,21 +128,23 @@ ignored:
     - /MP_verify_qSyvBPhDsPdxvOhC.txt
     - /weixin/**
     - /source/**
-    - /buyer/mini-program/**
-    - /buyer/cashier/**
-    - /buyer/pageData/**
-    - /buyer/article/**
+    - /buyer/payment/cashier/**
+    - /buyer/payment/cashierRefund/**
+    - /buyer/other/pageData/**
+    - /buyer/other/article/**
     - /buyer/goods/**
-    - /buyer/category/**
     - /buyer/store/**
-    - /buyer/connect/**
+    - /buyer/passport/connect/**
     - /buyer/members/**
+    - /buyer/passport/member/**
+    - /buyer/passport/member/refresh/**
     - /buyer/promotion/pintuan/**
     - /buyer/promotion/seckill/**
     - /buyer/promotion/pointsGoods/**
-    - /buyer/memberEvaluation/**/goodsEvaluation
-    - /buyer/memberEvaluation/**/evaluationNumber
-    - /buyer/appVersion/**
+    - /buyer/promotion/coupon
+    - /buyer/member/evaluation/**/goodsEvaluation
+    - /buyer/member/evaluation/**/evaluationNumber
+    - /buyer/other/appVersion/**
     - /buyer/broadcast/studio/**
     - /druid/**
     - /swagger-ui.html
@@ -176,8 +185,7 @@ logging:
   config: classpath:logback-spring.xml
   # 输出级别
   level:
-    cn.lili: debug
-    org.hibernate: debug
+    root: info
 #    org.springframework: debug
   file:
     # 指定路径
@@ -205,18 +213,6 @@ lili:
   lbs:
     key: 4BYBZ-7MT6S-PUAOA-6BNWL-FJUD7-UUFXT
     sk: zhNKVrJK6UPOhqIjn8AQvG37b9sz6
-  #域名
-  domain:
-    pc: https://pc-b2b2c.pickmall.cn
-    wap: https://m-b2b2c.pickmall.cn
-    store: https://store-b2b2c.pickmall.cn
-    admin: https://admin-b2b2c.pickmall.cn
-  #api地址
-  api:
-    buyer: https://buyer-api.pickmall.cn
-    common: https://common-api.pickmall.cn
-    manager: https://admin-api.pickmall.cn
-    store: https://store-api.pickmall.cn
 
   # jwt 细节设定
   jwt-setting:
@@ -257,6 +253,8 @@ lili:
       order-group: lili_order_group
       member-topic: lili_member_topic
       member-group: lili_member_group
+      store-topic: lili_store_topic
+      store-group: lili_store_group
       other-topic: lili_other_topic
       other-group: lili_other_group
       notice-topic: lili_notice_topic

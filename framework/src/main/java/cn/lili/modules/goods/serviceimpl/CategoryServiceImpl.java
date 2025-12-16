@@ -4,24 +4,30 @@ import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.cache.Cache;
 import cn.lili.cache.CachePrefix;
 import cn.lili.common.enums.ResultCode;
+import cn.lili.common.event.TransactionCommitSendMQEvent;
 import cn.lili.common.exception.ServiceException;
+import cn.lili.common.properties.RocketmqCustomProperties;
 import cn.lili.modules.goods.entity.dos.Category;
-import cn.lili.modules.goods.entity.dos.CategoryParameterGroup;
+import cn.lili.modules.goods.entity.dto.CategorySearchParams;
 import cn.lili.modules.goods.entity.vos.CategoryVO;
-import cn.lili.modules.goods.entity.vos.GoodsParamsGroupVO;
-import cn.lili.modules.goods.entity.vos.GoodsParamsVO;
 import cn.lili.modules.goods.mapper.CategoryMapper;
 import cn.lili.modules.goods.service.CategoryBrandService;
 import cn.lili.modules.goods.service.CategoryParameterGroupService;
 import cn.lili.modules.goods.service.CategoryService;
 import cn.lili.modules.goods.service.CategorySpecificationService;
+import cn.lili.rocketmq.tags.GoodsTagsEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +42,7 @@ import java.util.stream.Collectors;
  * @since 2020-02-23 15:18:56
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
+@CacheConfig(cacheNames = "{CATEGORY}")
 public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> implements CategoryService {
 
     private static final String DELETE_FLAG_COLUMN = "delete_flag";
@@ -55,9 +61,29 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     @Autowired
     private CategorySpecificationService categorySpecificationService;
 
+    @Autowired
+    private ApplicationEventPublisher applicationEventPublisher;
+
+    /**
+     * rocketMq
+     */
+    @Autowired
+    private RocketMQTemplate rocketMQTemplate;
+    /**
+     * rocketMq配置
+     */
+    @Autowired
+    private RocketmqCustomProperties rocketmqCustomProperties;
+
     @Override
     public List<Category> dbList(String parentId) {
         return this.list(new LambdaQueryWrapper<Category>().eq(Category::getParentId, parentId));
+    }
+
+    @Override
+    @Cacheable(key = "#id")
+    public Category getCategoryById(String id) {
+        return this.getById(id);
     }
 
     /**
@@ -69,6 +95,14 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     @Override
     public List<Category> listByIdsOrderByLevel(List<String> ids) {
         return this.list(new LambdaQueryWrapper<Category>().in(Category::getId, ids).orderByAsc(Category::getLevel));
+    }
+
+    @Override
+    public List<Map<String, Object>> listMapsByIdsOrderByLevel(List<String> ids, String columns) {
+        QueryWrapper<Category> queryWrapper = new QueryWrapper<>();
+        queryWrapper.select(columns);
+        queryWrapper.in("id", ids).orderByAsc("level");
+        return this.listMaps(queryWrapper);
     }
 
     @Override
@@ -132,10 +166,10 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     @Override
-    public List<CategoryVO> listAllChildren() {
+    public List<CategoryVO> listAllChildren(CategorySearchParams categorySearchParams) {
 
         //获取全部分类
-        List<Category> list = this.list();
+        List<Category> list = this.list(categorySearchParams.queryWrapper());
 
         //构造分类树
         List<CategoryVO> categoryVOList = new ArrayList<>();
@@ -195,6 +229,7 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean saveCategory(Category category) {
         //判断分类佣金是否正确
         if (category.getCommissionRate() < 0) {
@@ -211,6 +246,8 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     @Override
+    @CacheEvict(key = "#category.id")
+    @Transactional(rollbackFor = Exception.class)
     public void updateCategory(Category category) {
         //判断分类佣金是否正确
         if (category.getCommissionRate() < 0) {
@@ -224,18 +261,17 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
             }
         }
         UpdateWrapper<Category> updateWrapper = new UpdateWrapper<>();
-        updateWrapper.eq("id", category.getId())
-                .set("name", category.getName())
-                .set("image", category.getImage())
-                .set("sort_order", category.getSortOrder())
-                .set(DELETE_FLAG_COLUMN, category.getDeleteFlag())
-                .set("commission_rate", category.getCommissionRate());
+        updateWrapper.eq("id", category.getId());
         this.baseMapper.update(category, updateWrapper);
         removeCache();
+        applicationEventPublisher.publishEvent(new TransactionCommitSendMQEvent("同步商品分类名称",
+                rocketmqCustomProperties.getGoodsTopic(), GoodsTagsEnum.CATEGORY_GOODS_NAME.name(), category.getId()));
     }
 
 
     @Override
+    @CacheEvict(key = "#id")
+    @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         this.removeById(id);
         removeCache();
@@ -246,6 +282,8 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     @Override
+    @CacheEvict(key = "#categoryId")
+    @Transactional(rollbackFor = Exception.class)
     public void updateCategoryStatus(String categoryId, Boolean enableOperations) {
         //禁用子分类
         CategoryVO categoryVO = new CategoryVO(this.getById(categoryId));
@@ -300,34 +338,6 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     /**
-     * 拼装返回值
-     *
-     * @param paramList 参数列表
-     * @return 拼装后的返回值
-     */
-    private List<GoodsParamsGroupVO> convertParamList(List<CategoryParameterGroup> groupList, List<GoodsParamsVO> paramList) {
-        Map<String, List<GoodsParamsVO>> map = new HashMap<>(16);
-        for (GoodsParamsVO param : paramList) {
-            if (map.get(param.getGroupId()) != null) {
-                map.get(param.getGroupId()).add(param);
-            } else {
-                List<GoodsParamsVO> list = new ArrayList<>();
-                list.add(param);
-                map.put(param.getGroupId(), list);
-            }
-        }
-        List<GoodsParamsGroupVO> resList = new ArrayList<>();
-        for (CategoryParameterGroup group : groupList) {
-            GoodsParamsGroupVO list = new GoodsParamsGroupVO();
-            list.setGroupName(group.getGroupName());
-            list.setGroupId(group.getId());
-            list.setParams(map.get(group.getId()));
-            resList.add(list);
-        }
-        return resList;
-    }
-
-    /**
      * 获取所有的子分类ID
      *
      * @param category 分类
@@ -355,7 +365,7 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
                 return item.getChildren();
             }
             if (item.getChildren() != null && !item.getChildren().isEmpty()) {
-                return getChildren(parentId, categoryVOList);
+                return getChildren(parentId, item.getChildren());
             }
         }
         return categoryVOList;
@@ -366,5 +376,6 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
      */
     private void removeCache() {
         cache.remove(CachePrefix.CATEGORY.getPrefix());
+        cache.remove(CachePrefix.CATEGORY_ARRAY.getPrefix());
     }
 }

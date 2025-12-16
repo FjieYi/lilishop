@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
@@ -62,11 +63,12 @@ public class CustomWordsServiceImpl extends ServiceImpl<CustomWordsMapper, Custo
      * @return 是否添加成功
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean addCustomWords(CustomWordsVO customWordsVO) {
         LambdaQueryWrapper<CustomWords> queryWrapper = new LambdaQueryWrapper<CustomWords>().eq(CustomWords::getName, customWordsVO.getName());
         CustomWords one = this.getOne(queryWrapper, false);
         if (one != null && one.getDisabled().equals(1)) {
-            throw new ServiceException(ResultCode.CUSTOM_WORDS_EXIST_ERROR);
+            return false;
         } else if (one != null && !one.getDisabled().equals(1)) {
             this.remove(queryWrapper);
         }
@@ -81,11 +83,26 @@ public class CustomWordsServiceImpl extends ServiceImpl<CustomWordsMapper, Custo
      * @return 是否删除成功
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteCustomWords(String id) {
         if (this.getById(id) == null) {
             throw new ServiceException(ResultCode.CUSTOM_WORDS_NOT_EXIST_ERROR);
         }
         return this.removeById(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteBathByName(List<String> names) {
+        LambdaQueryWrapper<CustomWords> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.in(CustomWords::getName, names);
+        return this.remove(queryWrapper);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public long insertBatchCustomWords(List<CustomWords> customWordsList) {
+        return this.baseMapper.insertIgnoreBatchAllColumn(customWordsList);
     }
 
     /**

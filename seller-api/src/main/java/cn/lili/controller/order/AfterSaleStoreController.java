@@ -1,10 +1,12 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.security.OperationalJudgment;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.order.aftersale.entity.dos.AfterSale;
+import cn.lili.modules.order.aftersale.entity.vo.AfterSaleNumVO;
 import cn.lili.modules.order.aftersale.entity.vo.AfterSaleSearchParams;
 import cn.lili.modules.order.aftersale.entity.vo.AfterSaleVO;
 import cn.lili.modules.order.aftersale.service.AfterSaleService;
@@ -30,7 +32,7 @@ import java.util.Objects;
  */
 @RestController
 @Api(tags = "店铺端,售后管理接口")
-@RequestMapping("/store/afterSale")
+@RequestMapping("/store/order/afterSale")
 public class AfterSaleStoreController {
 
     @Autowired
@@ -52,6 +54,12 @@ public class AfterSaleStoreController {
         return ResultUtil.data(afterSaleService.getAfterSalePages(searchParams));
     }
 
+    @ApiOperation(value = "获取售后数量")
+    @GetMapping(value = "/afterSaleNumVO")
+    public ResultMessage<AfterSaleNumVO> getAfterSaleNumVO(AfterSaleSearchParams afterSaleSearchParams) {
+        return ResultUtil.data(afterSaleService.getAfterSaleNumVO(afterSaleSearchParams));
+    }
+
     @ApiOperation(value = "获取导出售后服务列表列表")
     @GetMapping(value = "/exportAfterSaleOrder")
     public ResultMessage<List<AfterSale>> exportAfterSaleOrder(AfterSaleSearchParams searchParams) {
@@ -60,6 +68,7 @@ public class AfterSaleStoreController {
         return ResultUtil.data(afterSaleService.exportAfterSaleOrder(searchParams));
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "审核售后申请")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "afterSaleSn", value = "售后sn", required = true, paramType = "path"),
@@ -76,6 +85,7 @@ public class AfterSaleStoreController {
         return ResultUtil.data(afterSaleService.review(afterSaleSn, serviceStatus, remark,actualRefundPrice));
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "卖家确认收货")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "afterSaleSn", value = "售后sn", required = true, paramType = "path"),

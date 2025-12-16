@@ -9,7 +9,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -24,8 +23,7 @@ import java.util.List;
  */
 @RestController
 @Api(tags = "管理端,行政地区管理接口")
-@RequestMapping("/manager/region")
-@Transactional(rollbackFor = Exception.class)
+@RequestMapping("/manager/setting/region")
 public class RegionManagerController {
     @Autowired
     private RegionService regionService;
@@ -51,6 +49,7 @@ public class RegionManagerController {
         return ResultUtil.data(regionService.getItem(id));
     }
 
+    @DemoSite
     @PutMapping(value = "/{id}")
     @ApiImplicitParam(name = "id", value = "地区ID", required = true, dataType = "String", paramType = "path")
     @ApiOperation(value = "更新地区")
@@ -61,6 +60,7 @@ public class RegionManagerController {
     }
 
 
+    @DemoSite
     @PostMapping
     @ApiOperation(value = "增加地区")
     public ResultMessage<Region> save(@Valid Region region) {
@@ -68,6 +68,7 @@ public class RegionManagerController {
         return ResultUtil.data(region);
     }
 
+    @DemoSite
     @DeleteMapping(value = "{ids}")
     @ApiImplicitParam(name = "id", value = "地区ID", required = true, dataType = "String", allowMultiple = true, paramType = "path")
     @ApiOperation(value = "批量通过id删除")

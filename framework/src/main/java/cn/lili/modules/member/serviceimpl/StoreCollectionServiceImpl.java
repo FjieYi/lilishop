@@ -17,6 +17,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -35,7 +36,7 @@ public class StoreCollectionServiceImpl extends ServiceImpl<StoreCollectionMappe
 
     @Override
     public IPage<StoreCollectionVO> storeCollection(PageVO pageVo) {
-        QueryWrapper<StoreCollectionVO> queryWrapper = new QueryWrapper();
+        QueryWrapper<StoreCollectionVO> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("sc.member_id", UserContext.getCurrentUser().getId());
         queryWrapper.orderByDesc("sc.create_time");
         return this.baseMapper.storeCollectionVOList(PageUtil.initPage(pageVo), queryWrapper);
@@ -43,13 +44,14 @@ public class StoreCollectionServiceImpl extends ServiceImpl<StoreCollectionMappe
 
     @Override
     public boolean isCollection(String storeId) {
-        QueryWrapper<StoreCollection> queryWrapper = new QueryWrapper();
+        QueryWrapper<StoreCollection> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("member_id", UserContext.getCurrentUser().getId());
         queryWrapper.eq("store_id", storeId);
-        return Optional.ofNullable(this.getOne(queryWrapper)).isPresent();
+        return Optional.ofNullable(this.getOne(queryWrapper, false)).isPresent();
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public StoreCollection addStoreCollection(String storeId) {
         if (this.getOne(new LambdaUpdateWrapper<StoreCollection>()
                 .eq(StoreCollection::getMemberId, UserContext.getCurrentUser().getId())
@@ -63,8 +65,9 @@ public class StoreCollectionServiceImpl extends ServiceImpl<StoreCollectionMappe
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteStoreCollection(String storeId) {
-        QueryWrapper<StoreCollection> queryWrapper = new QueryWrapper();
+        QueryWrapper<StoreCollection> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("member_id", UserContext.getCurrentUser().getId());
         queryWrapper.eq("store_id", storeId);
         storeService.updateStoreCollectionNum(new CollectionDTO(storeId, -1));

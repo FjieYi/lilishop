@@ -3,14 +3,15 @@ package cn.lili.modules.promotion.service;
 import cn.lili.cache.CachePrefix;
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.common.vo.PageVO;
-import cn.lili.modules.order.cart.entity.vo.CartSkuVO;
+import cn.lili.modules.goods.entity.dos.GoodsSku;
 import cn.lili.modules.promotion.entity.dos.PromotionGoods;
-import cn.lili.modules.promotion.entity.vos.PromotionGoodsSearchParams;
-import com.baomidou.mybatisplus.core.metadata.IPage;
+import cn.lili.modules.promotion.entity.dto.search.PromotionGoodsSearchParams;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 促销商品业务层
@@ -30,23 +31,27 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
      * @return 缓存商品库存key
      */
     static String getPromotionGoodsStockCacheKey(PromotionTypeEnum typeEnum, String promotionId, String skuId) {
-        return "{" + CachePrefix.PROMOTION_GOODS_STOCK.name() + "_" + typeEnum.name() + "}_" + promotionId + "_" + skuId;
+        //ps: 2023-06-09 促销商品库存与普通商品库存不在同一槽内，会导致库存扣减lua脚本无法执行
+        return CachePrefix.SKU_STOCK.getPrefix() + "_" + typeEnum.name() + "_" + promotionId + "_" + skuId;
     }
 
     /**
-     * 更新促销活动
+     * 获取某sku所有有效活动
      *
-     * @param cartSkuVO 购物车中的产品
-     */
-    void updatePromotion(CartSkuVO cartSkuVO);
-
-    /**
-     * 获取某sku当日所有活动
-     *
-     * @param skuId 商品skuId
+     * @param skuId    商品skuId
+     * @param storeIds 店铺id
      * @return 促销商品集合
      */
-    List<PromotionGoods> findNowSkuPromotion(String skuId);
+    List<PromotionGoods> findSkuValidPromotion(String skuId, String storeIds);
+
+
+    /**
+     * 获取sku所有有效活动
+     *
+     * @param skus 商品skuId
+     * @return 促销商品集合
+     */
+    List<PromotionGoods> findSkuValidPromotions(List<String> skus);
 
     /**
      * 分页获取促销商品信息
@@ -55,7 +60,7 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
      * @param pageVo       分页参数
      * @return 促销商品列表
      */
-    IPage<PromotionGoods> pageFindAll(PromotionGoodsSearchParams searchParams, PageVO pageVo);
+    Page<PromotionGoods> pageFindAll(PromotionGoodsSearchParams searchParams, PageVO pageVo);
 
     /**
      * 获取促销商品信息
@@ -77,7 +82,7 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
     /**
      * 获取当前有效时间特定促销类型的促销商品信息
      *
-     * @param skuId skuId
+     * @param skuId          skuId
      * @param promotionTypes 特定促销类型
      * @return 促销商品信息
      */
@@ -86,7 +91,7 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
     /**
      * 获取当前有效时间特定促销类型的促销商品价格
      *
-     * @param skuId skuId
+     * @param skuId          skuId
      * @param promotionTypes 特定促销类型
      * @return 促销商品价格
      */
@@ -128,12 +133,17 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
     /**
      * 更新促销活动商品库存
      *
-     * @param typeEnum    促销商品类型
-     * @param promotionId 促销活动id
-     * @param skuId       商品skuId
-     * @param quantity    更新后的库存数量
+     * @param promotionGoodsList 更新促销活动商品信息
      */
-    void updatePromotionGoodsStock(PromotionTypeEnum typeEnum, String promotionId, String skuId, Integer quantity);
+    void updatePromotionGoodsStock(List<PromotionGoods> promotionGoodsList);
+
+    /**
+     * 更新促销活动商品库存
+     *
+     * @param skuId    商品skuId
+     * @param quantity 库存
+     */
+    void updatePromotionGoodsStock(String skuId, Integer quantity);
 
     /**
      * 更新促销活动商品索引
@@ -158,10 +168,26 @@ public interface PromotionGoodsService extends IService<PromotionGoods> {
     void deletePromotionGoods(List<String> promotionIds);
 
     /**
+     * 删除商品的促销
+     *
+     * @param goodsIds 商品id
+     */
+    void deletePromotionGoodsByGoods(List<String> goodsIds);
+
+    /**
      * 根据参数删除促销商品
      *
      * @param searchParams 查询参数
      */
     void deletePromotionGoods(PromotionGoodsSearchParams searchParams);
+
+    /**
+     * 获取当前商品促销信息
+     *
+     * @param dataSku  商品sku信息
+     * @param cartType 购物车类型
+     * @return 当前商品促销信息
+     */
+    Map<String, Object> getCurrentGoodsPromotion(GoodsSku dataSku, String cartType);
 
 }

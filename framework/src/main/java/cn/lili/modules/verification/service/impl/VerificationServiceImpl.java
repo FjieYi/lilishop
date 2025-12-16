@@ -1,5 +1,6 @@
 package cn.lili.modules.verification.service.impl;
 
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.cache.Cache;
 import cn.lili.cache.CachePrefix;
 import cn.lili.common.enums.ResultCode;
@@ -11,6 +12,7 @@ import cn.lili.modules.verification.SliderImageUtil;
 import cn.lili.modules.verification.entity.dos.VerificationSource;
 import cn.lili.modules.verification.entity.dto.VerificationDTO;
 import cn.lili.modules.verification.entity.enums.VerificationEnums;
+import cn.lili.modules.verification.entity.enums.VerificationSourceEnum;
 import cn.lili.modules.verification.service.VerificationService;
 import cn.lili.modules.verification.service.VerificationSourceService;
 import lombok.extern.slf4j.Slf4j;
@@ -96,6 +98,7 @@ public class VerificationServiceImpl implements VerificationService {
         } catch (ServiceException e) {
             throw e;
         } catch (Exception e) {
+            log.error("生成验证码失败", e);
             throw new ServiceException(ResultCode.ERROR);
         }
     }
@@ -156,7 +159,7 @@ public class VerificationServiceImpl implements VerificationService {
     @Override
     public boolean check(String uuid, VerificationEnums verificationEnums) {
         //如果有校验标记，则返回校验结果
-        if (cache.remove(cacheResult(verificationEnums, uuid))) {
+        if (Boolean.TRUE.equals(cache.remove(cacheResult(verificationEnums, uuid)))) {
             return true;
         }
         throw new ServiceException(ResultCode.VERIFICATION_CODE_INVALID);
@@ -184,4 +187,47 @@ public class VerificationServiceImpl implements VerificationService {
         return CachePrefix.VERIFICATION_RESULT.getPrefix() + verificationEnums.name() + uuid;
     }
 
+
+    @Override
+    public Boolean checkCreateVerification(String type, String filePath) {
+        if (CharSequenceUtil.isBlank(type) || CharSequenceUtil.isBlank(filePath)) {
+            throw new ServiceException(ResultCode.ILLEGAL_REQUEST_ERROR);
+        }
+
+        //获取验证码配置
+        VerificationDTO verificationDTO = verificationSourceService.getVerificationCache();
+
+        List<VerificationSource> verificationResources = verificationDTO.getVerificationResources();
+
+        List<VerificationSource> verificationSlider = verificationDTO.getVerificationSlider();
+
+        //随机选择需要切的图片地址
+        String originalResource = verificationResources.get(0).getResource();
+        //随机选择剪切模版图片地址
+        String sliderResource = verificationSlider.get(0).getResource();
+
+
+        if (VerificationSourceEnum.RESOURCE.name().equals(type)) {
+            originalResource = filePath;
+        } else if (VerificationSourceEnum.SLIDER.name().equals(type)) {
+            sliderResource = filePath;
+        }
+
+        try {
+            //获取缓存中的资源
+            SerializableStream originalFile = getInputStream(originalResource);
+            SerializableStream sliderFile = getInputStream(sliderResource);
+            //生成数据
+            SliderImageUtil.pictureTemplatesCut(
+                    sliderFile, sliderFile, originalFile,
+                    verificationCodeProperties.getWatermark(),
+                    verificationCodeProperties.getInterfereNum()
+            );
+        } catch (Exception e) {
+            throw new ServiceException("当前图片不符合规则，请上传正确格式的图片！");
+        }
+        return true;
+    }
+
 }
+

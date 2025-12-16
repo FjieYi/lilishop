@@ -5,6 +5,8 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import cn.lili.common.enums.ResultCode;
+import cn.lili.common.exception.ServiceException;
 import cn.lili.modules.payment.kit.core.PaymentHttpResponse;
 import cn.lili.modules.payment.kit.core.enums.RequestMethodEnums;
 import cn.lili.modules.payment.kit.core.enums.SignType;
@@ -113,6 +115,30 @@ public class WxPayKit {
             return hmacSha256(stringSignTemp, partnerKey).toUpperCase();
         }
     }
+
+    /**
+     * APP 单独生成签名
+     * app 支付环境中，如果遇到签名错误，百思不得其解，则可以使用这个方法调用签名尝试解决
+     *
+     * @param params 需要签名的参数
+     * @return 签名后的数据
+     */
+    public static String createAppSign(Map<String, String> params, String privateKey) {
+
+        String appid = params.get("appid");
+        String timestamp = params.get("timestamp");
+        String noncestr = params.get("noncestr");
+        String prepayid = params.get("prepayid");
+
+        String encrypt = appid + "\n" + timestamp + "\n" + noncestr + "\n" + prepayid + "\n";
+
+        try {
+            return PayKit.createSign(encrypt, privateKey);
+        } catch (Exception e) {
+            throw new ServiceException(ResultCode.ERROR);
+        }
+    }
+
 
     /**
      * 生成签名
@@ -351,6 +377,8 @@ public class WxPayKit {
             signType = SignType.MD5;
         }
         String packageSign = createSign(packageParams, partnerKey, signType);
+        // 部分微信APP支付 提示签名错误 解开下方注释 替换上边的代码就好。
+        //        String packageSign = createAppSign(packageParams, partnerKey);
         packageParams.put("sign", packageSign);
         return packageParams;
     }
@@ -421,7 +449,8 @@ public class WxPayKit {
      * @param urlSuffix 可通过 WxApiType 来获取，URL挂载参数需要自行拼接
      * @param mchId     商户Id
      * @param serialNo  商户 API 证书序列号
-     * @param keyPath   key.pem 证书路径
+     * @param key   key.pem 证书
+     * @param publicKey 公钥证书
      * @param body      接口请求参数
      * @param nonceStr  随机字符库
      * @param timestamp 时间戳
@@ -430,11 +459,12 @@ public class WxPayKit {
      * @throws Exception 异常信息
      */
     public static String buildAuthorization(RequestMethodEnums method, String urlSuffix, String mchId,
-                                            String serialNo, String keyPath, String body, String nonceStr,
+                                            String serialNo, String key, String publicKey ,String body, String nonceStr,
                                             long timestamp, String authType) throws Exception {
         //构建签名参数
         String buildSignMessage = PayKit.buildSignMessage(method, urlSuffix, timestamp, nonceStr, body);
-        String signature = PayKit.createSign(buildSignMessage, keyPath);
+        String publicKeySignature = PayKit.createPublicSign(buildSignMessage, publicKey);
+        String signature = PayKit.createSign(publicKeySignature, key);
         //根据平台规则生成请求头 authorization
         return PayKit.getAuthorization(mchId, serialNo, nonceStr, String.valueOf(timestamp), signature, authType);
     }
@@ -464,27 +494,27 @@ public class WxPayKit {
         return PayKit.getAuthorization(mchId, serialNo, nonceStr, String.valueOf(timestamp), signature, authType);
     }
 
-    /**
-     * 构建 v3 接口所需的 Authorization
-     *
-     * @param method    {@link RequestMethodEnums} 请求方法
-     * @param urlSuffix 可通过 WxApiType 来获取，URL挂载参数需要自行拼接
-     * @param mchId     商户Id
-     * @param serialNo  商户 API 证书序列号
-     * @param keyPath   key.pem 证书路径
-     * @param body      接口请求参数
-     * @return {@link String} 返回 v3 所需的 Authorization
-     * @throws Exception 异常信息
-     */
-    public static String buildAuthorization(RequestMethodEnums method, String urlSuffix, String mchId,
-                                            String serialNo, String keyPath, String body) throws Exception {
-
-        long timestamp = System.currentTimeMillis() / 1000;
-        String authType = "WECHATPAY2-SHA256-RSA2048";
-        String nonceStr = IdUtil.fastSimpleUUID();
-
-        return buildAuthorization(method, urlSuffix, mchId, serialNo, keyPath, body, nonceStr, timestamp, authType);
-    }
+//    /**
+//     * 构建 v3 接口所需的 Authorization
+//     *
+//     * @param method    {@link RequestMethodEnums} 请求方法
+//     * @param urlSuffix 可通过 WxApiType 来获取，URL挂载参数需要自行拼接
+//     * @param mchId     商户Id
+//     * @param serialNo  商户 API 证书序列号
+//     * @param keyPath   key.pem 证书路径
+//     * @param body      接口请求参数
+//     * @return {@link String} 返回 v3 所需的 Authorization
+//     * @throws Exception 异常信息
+//     */
+//    public static String buildAuthorization(RequestMethodEnums method, String urlSuffix, String mchId,
+//                                            String serialNo, String keyPath, String body) throws Exception {
+//
+//        long timestamp = System.currentTimeMillis() / 1000;
+//        String authType = "WECHATPAY2-SHA256-RSA2048";
+//        String nonceStr = IdUtil.fastSimpleUUID();
+//
+//        return buildAuthorization(method, urlSuffix, mchId, serialNo, keyPath, body, nonceStr, timestamp, authType);
+//    }
 
     /**
      * 构建 v3 接口所需的 Authorization

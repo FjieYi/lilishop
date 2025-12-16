@@ -9,8 +9,8 @@ import cn.lili.common.vo.PageVO;
 import cn.lili.modules.promotion.entity.dos.KanjiaActivity;
 import cn.lili.modules.promotion.entity.dos.KanjiaActivityGoods;
 import cn.lili.modules.promotion.entity.dos.KanjiaActivityLog;
-import cn.lili.modules.promotion.entity.dto.KanJiaActivityLogQuery;
 import cn.lili.modules.promotion.entity.dto.KanjiaActivityDTO;
+import cn.lili.modules.promotion.entity.dto.search.KanJiaActivityLogQuery;
 import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
 import cn.lili.modules.promotion.mapper.KanJiaActivityLogMapper;
 import cn.lili.modules.promotion.service.KanjiaActivityGoodsService;
@@ -23,7 +23,6 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 
 /**
@@ -33,7 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
  * @date 2021/7/1
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class KanjiaActivityLogServiceImpl extends ServiceImpl<KanJiaActivityLogMapper, KanjiaActivityLog> implements KanjiaActivityLogService {
 
     @Autowired

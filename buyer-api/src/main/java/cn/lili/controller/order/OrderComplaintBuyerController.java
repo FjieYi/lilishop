@@ -1,5 +1,6 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.OperationalJudgment;
@@ -33,7 +34,7 @@ import java.util.Objects;
  **/
 @RestController
 @Api(tags = "买家端,交易投诉接口")
-@RequestMapping("/buyer/complain")
+@RequestMapping("/buyer/order/complain")
 public class OrderComplaintBuyerController {
 
     /**
@@ -66,6 +67,7 @@ public class OrderComplaintBuyerController {
 
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "添加交易投诉")
     @PostMapping
     public ResultMessage<OrderComplaint> add(@Valid OrderComplaintDTO orderComplaintDTO) {
@@ -80,11 +82,12 @@ public class OrderComplaintBuyerController {
     @PostMapping("/communication")
     public ResultMessage<OrderComplaintCommunicationVO> addCommunication(@RequestParam String complainId, @RequestParam String content) {
         AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
-        OrderComplaintCommunicationVO communicationVO = new OrderComplaintCommunicationVO(complainId, content, CommunicationOwnerEnum.BUYER.name(), currentUser.getId(), currentUser.getNickName());
+        OrderComplaintCommunicationVO communicationVO = new OrderComplaintCommunicationVO(complainId, content, CommunicationOwnerEnum.BUYER.name(), currentUser.getNickName(), currentUser.getId());
         orderComplaintCommunicationService.addCommunication(communicationVO);
         return ResultUtil.data(communicationVO);
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "取消售后")
     @ApiImplicitParam(name = "id", value = "投诉单ID", required = true, paramType = "path")
     @PutMapping(value = "/status/{id}")

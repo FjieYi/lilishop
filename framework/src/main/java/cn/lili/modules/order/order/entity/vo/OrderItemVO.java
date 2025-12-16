@@ -5,6 +5,7 @@ import cn.lili.modules.order.order.entity.enums.OrderComplaintStatusEnum;
 import cn.lili.modules.order.order.entity.enums.OrderItemAfterSaleStatusEnum;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 子订单VO
@@ -13,6 +14,7 @@ import lombok.Data;
  * @since 2020-08-17 20:28
  */
 @Data
+@NoArgsConstructor
 public class OrderItemVO {
 
     @ApiModelProperty(value = "编号")
@@ -54,18 +56,48 @@ public class OrderItemVO {
     @ApiModelProperty(value = "评论状态:未评论(UNFINISHED),待追评(WAIT_CHASE),评论完成(FINISHED)，")
     private String commentStatus;
 
+    /**
+     * @see cn.lili.modules.order.order.entity.enums.RefundStatusEnum
+     */
+    @ApiModelProperty(value = "退款状态")
+    private String isRefund;
 
-    public OrderItemVO(String sn, String goodsId, String skuId, String num, String image, String name, String afterSaleStatus, String complainStatus, String commentStatus, Double goodsPrice) {
+    @ApiModelProperty(value = "退款金额")
+    private String refundPrice;
+
+    public void setSn(String sn) {
         this.sn = sn;
-        this.goodsId = goodsId;
+    }
+
+    public void setSkuId(String skuId) {
         this.skuId = skuId;
+    }
+
+    public void setNum(String num) {
         this.num = num;
+    }
+
+    public void setImage(String image) {
         this.image = image;
+    }
+
+    public void setName(String name) {
         this.name = name;
-        this.afterSaleStatus = afterSaleStatus;
-        this.complainStatus = complainStatus;
-        this.commentStatus = commentStatus;
+    }
+
+    public void setGoodsPrice(Double goodsPrice) {
         this.goodsPrice = goodsPrice;
     }
 
+    public void setAfterSaleStatus(String afterSaleStatus) {
+        this.afterSaleStatus = afterSaleStatus;
+    }
+
+    public void setComplainStatus(String complainStatus) {
+        this.complainStatus = complainStatus;
+    }
+
+    public void setCommentStatus(String commentStatus) {
+        this.commentStatus = commentStatus;
+    }
 }

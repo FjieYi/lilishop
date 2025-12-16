@@ -1,15 +1,14 @@
 package cn.lili.modules.verification.service.impl;
 
 import cn.lili.cache.Cache;
-import cn.lili.modules.verification.entity.dos.VerificationSource;
-import cn.lili.modules.verification.entity.enums.VerificationSourceEnum;
-import cn.lili.modules.verification.entity.dto.VerificationDTO;
 import cn.lili.modules.system.mapper.VerificationSourceMapper;
+import cn.lili.modules.verification.entity.dos.VerificationSource;
+import cn.lili.modules.verification.entity.dto.VerificationDTO;
+import cn.lili.modules.verification.entity.enums.VerificationSourceEnum;
 import cn.lili.modules.verification.service.VerificationSourceService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,6 @@ import java.util.List;
  * @since 2020/11/17 3:48 下午
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class VerificationSourceServiceImpl extends ServiceImpl<VerificationSourceMapper, VerificationSource> implements VerificationSourceService {
 
     @Autowired
@@ -54,7 +52,7 @@ public class VerificationSourceServiceImpl extends ServiceImpl<VerificationSourc
         } catch (ClassCastException cce) {
             verificationDTO = null;
         }
-        if (verificationDTO == null) {
+        if (verificationDTO == null || verificationDTO.getVerificationResources().size() <= 0 || verificationDTO.getVerificationSlider().size() <= 0) {
             return initCache();
         }
         return verificationDTO;

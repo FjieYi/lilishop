@@ -3,9 +3,10 @@ package cn.lili.modules.search.service;
 import cn.lili.common.enums.PromotionTypeEnum;
 import cn.lili.modules.goods.entity.dos.GoodsSku;
 import cn.lili.modules.goods.entity.dto.GoodsParamsDTO;
+import cn.lili.modules.promotion.entity.dos.BasePromotions;
 import cn.lili.modules.promotion.entity.dos.PromotionGoods;
-import cn.lili.modules.promotion.entity.dto.BasePromotions;
 import cn.lili.modules.search.entity.dos.EsGoodsIndex;
+import org.elasticsearch.action.update.UpdateRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -19,21 +20,48 @@ import java.util.Map;
 public interface EsGoodsIndexService {
 
     /**
-     * 全局索引初始化
+     * 删除下架商品索引
+     */
+    Boolean deleteGoodsDown();
+
+    /**
+     * 删除不存在的索引
+     * @return
+     */
+    Boolean delSkuIndex();
+
+    Boolean goodsCache();
+    /**
+     * 全局索引数据初始化
      */
     void init();
 
     /**
      * 获取es生成索引进度
+     *
      * @return
      */
-    Map<String, Integer> getProgress();
+    Map<String, Long> getProgress();
+
+
+    /**
+     * 全局索引初始化
+     */
+    void initIndex();
+
     /**
      * 添加商品索引
      *
      * @param goods 商品索引信息
      */
     void addIndex(EsGoodsIndex goods);
+
+    /**
+     * 添加商品索引
+     *
+     * @param goods 商品索引信息
+     */
+    void addIndex(List<EsGoodsIndex> goods);
 
     /**
      * 更新商品索引
@@ -68,9 +96,9 @@ public interface EsGoodsIndexService {
     /**
      * 删除索引
      *
-     * @param goods 商品索引信息
+     * @param queryFields 查询条件 (key 为字段，value为字段值)
      */
-    void deleteIndex(EsGoodsIndex goods);
+    void deleteIndex(Map<String, Object> queryFields);
 
     /**
      * 删除索引
@@ -80,11 +108,19 @@ public interface EsGoodsIndexService {
     void deleteIndexById(String id);
 
     /**
+     * 删除索引
+     *
+     * @param ids 商品索引id集合
+     */
+    void deleteIndexByIds(List<String> ids);
+
+    /**
      * 初始化商品索引
      *
      * @param goodsIndexList 商品索引列表
+     * @param regeneratorIndex 是否重新生成索引
      */
-    void initIndex(List<EsGoodsIndex> goodsIndexList);
+    void initIndex(List<EsGoodsIndex> goodsIndexList, boolean regeneratorIndex);
 
     /**
      * 更新商品索引的促销信息
@@ -92,14 +128,13 @@ public interface EsGoodsIndexService {
      * @param id        id(skuId)
      * @param promotion 促销信息
      * @param key       促销信息的key
-     * @param price     促销价格
      */
-    void updateEsGoodsIndexPromotions(String id, BasePromotions promotion, String key, Double price);
+    UpdateRequest updateEsGoodsIndexPromotions(String id, BasePromotions promotion, String key);
 
     /**
      * 更新商品索引的促销信息
      *
-     * @param ids        id(skuId)
+     * @param ids       id(skuId)
      * @param promotion 促销信息
      * @param key       促销信息的key
      */
@@ -123,20 +158,20 @@ public interface EsGoodsIndexService {
     void updateEsGoodsIndexAllByList(BasePromotions promotion, String key);
 
     /**
-     * 删除指定商品的促销信息
+     * 删除索引中指定的促销活动id的促销活动
      *
-     * @param skuIds        skuId列表
-     * @param promotionType 促销类型
+     * @param skuIds      商品skuId
+     * @param promotionsKey 促销活动Key
      */
-    void deleteEsGoodsPromotionIndexByList(List<String> skuIds, PromotionTypeEnum promotionType);
+    void deleteEsGoodsPromotionByPromotionKey(List<String> skuIds, String promotionsKey);
+
 
     /**
      * 删除索引中指定的促销活动id的促销活动
      *
-     * @param skuIds       商品skuId
-     * @param promotionId 促销活动Id
+     * @param promotionsKey 促销活动Key
      */
-    void deleteEsGoodsPromotionByPromotionId(List<String> skuIds, String promotionId);
+    void deleteEsGoodsPromotionByPromotionKey(String promotionsKey);
 
     /**
      * 清除所以商品索引的无效促销活动
@@ -169,11 +204,11 @@ public interface EsGoodsIndexService {
     List<String> getPromotionIdByPromotionType(String id, PromotionTypeEnum promotionTypeEnum);
 
     /**
-     * 重置当前商品索引
+     * 获取重置的商品索引
      *
      * @param goodsSku       商品sku信息
      * @param goodsParamDTOS 商品参数
      * @return 商品索引
      */
-    EsGoodsIndex resetEsGoodsIndex(GoodsSku goodsSku, List<GoodsParamsDTO> goodsParamDTOS);
+    EsGoodsIndex getResetEsGoodsIndex(GoodsSku goodsSku, List<GoodsParamsDTO> goodsParamDTOS);
 }

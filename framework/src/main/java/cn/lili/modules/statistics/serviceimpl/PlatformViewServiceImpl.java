@@ -27,7 +27,6 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -59,11 +58,6 @@ public class PlatformViewServiceImpl extends ServiceImpl<PlatformViewMapper, Pla
      */
     @Autowired
     private Cache cache;
-    /**
-     * 平台流量统计
-     */
-    @Resource
-    private PlatformViewMapper platformViewMapper;
 
     @Override
     public Long online() {
@@ -131,7 +125,7 @@ public class PlatformViewServiceImpl extends ServiceImpl<PlatformViewMapper, Pla
         calendar.set(Calendar.SECOND, 0);
         calendar.set(Calendar.MILLISECOND, 0);
 
-        calendar.set(Calendar.HOUR_OF_DAY, calendar.get(Calendar.HOUR_OF_DAY) - statisticsProperties.getOnlineMember() - 1);
+        calendar.set(Calendar.HOUR_OF_DAY, calendar.get(Calendar.HOUR_OF_DAY) - statisticsProperties.getOnlineMember());
         //循环填充数据
         for (int i = 0; i < statisticsProperties.getOnlineMember(); i++) {
             calendar.set(Calendar.HOUR_OF_DAY, calendar.get(Calendar.HOUR_OF_DAY) + 1);
@@ -142,7 +136,7 @@ public class PlatformViewServiceImpl extends ServiceImpl<PlatformViewMapper, Pla
                 }
             }
             if (exitOnlineNum == null) {
-                onlineMemberVOS.add(new OnlineMemberVO(calendar.getTime(), 0));
+                onlineMemberVOS.add(new OnlineMemberVO(calendar.getTime(), 0, 0));
             } else {
                 onlineMemberVOS.add(exitOnlineNum);
             }
@@ -250,7 +244,7 @@ public class PlatformViewServiceImpl extends ServiceImpl<PlatformViewMapper, Pla
             } else {
                 queryWrapper.eq("store_id", -1);
             }
-            return platformViewMapper.count(queryWrapper);
+            return this.baseMapper.count(queryWrapper);
         }
     }
 

@@ -1,5 +1,6 @@
 package cn.lili.controller.order;
 
+import cn.lili.common.aop.annotation.PreventDuplicateSubmissions;
 import cn.lili.common.enums.ResultCode;
 import cn.lili.common.enums.ResultUtil;
 import cn.lili.common.exception.ServiceException;
@@ -8,11 +9,14 @@ import cn.lili.common.security.OperationalJudgment;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.order.order.entity.dos.Order;
+import cn.lili.modules.order.order.entity.dos.OrderPackage;
 import cn.lili.modules.order.order.entity.dto.OrderSearchParams;
 import cn.lili.modules.order.order.entity.enums.OrderStatusEnum;
 import cn.lili.modules.order.order.entity.vo.OrderDetailVO;
 import cn.lili.modules.order.order.entity.vo.OrderSimpleVO;
+import cn.lili.modules.order.order.service.OrderPackageService;
 import cn.lili.modules.order.order.service.OrderService;
+import cn.lili.modules.system.entity.vo.Traces;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -34,7 +38,7 @@ import java.util.Objects;
  */
 @RestController
 @Api(tags = "买家端,订单接口")
-@RequestMapping("/buyer/orders")
+@RequestMapping("/buyer/order/order")
 public class OrderBuyerController {
 
     /**
@@ -42,6 +46,9 @@ public class OrderBuyerController {
      */
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private OrderPackageService orderPackageService;
 
     @ApiOperation(value = "查询会员订单列表")
     @GetMapping
@@ -62,6 +69,7 @@ public class OrderBuyerController {
         return ResultUtil.data(orderDetailVO);
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "确认收货")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, paramType = "path")
@@ -80,6 +88,7 @@ public class OrderBuyerController {
         return ResultUtil.success();
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "取消订单")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path"),
@@ -91,6 +100,7 @@ public class OrderBuyerController {
         return ResultUtil.success();
     }
 
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "删除订单")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path")
@@ -112,7 +122,18 @@ public class OrderBuyerController {
         return ResultUtil.data(orderService.getTraces(orderSn));
     }
 
+    @ApiOperation(value = "查询地图版物流踪迹")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path")
+    })
+    @PostMapping(value = "/getMapTraces/{orderSn}")
+    public ResultMessage<Object> getMapTraces(@NotBlank(message = "订单编号不能为空") @PathVariable String orderSn) {
+        OperationalJudgment.judgment(orderService.getBySn(orderSn));
+        return ResultUtil.data(orderService.getMapTraces(orderSn));
+    }
 
+
+    @PreventDuplicateSubmissions
     @ApiOperation(value = "开票")
     @ApiImplicitParams({
             @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path")
@@ -123,5 +144,21 @@ public class OrderBuyerController {
         return ResultUtil.data(orderService.invoice(orderSn));
     }
 
+    @ApiOperation(value = "查询物流踪迹")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path")
+    })
+    @GetMapping(value = "/getTracesList/{orderSn}")
+    public ResultMessage<Object> getTracesList(@NotBlank(message = "订单编号不能为空") @PathVariable String orderSn) {
+        return ResultUtil.data(orderPackageService.getOrderPackageVOList(orderSn));
+    }
 
+    @ApiOperation(value = "查看包裹列表")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "orderSn", value = "订单编号", required = true, dataType = "String", paramType = "path")
+    })
+    @GetMapping(value = "/getPackage/{orderSn}")
+    public ResultMessage<Object> getPackage(@NotBlank(message = "订单编号不能为空") @PathVariable String orderSn) {
+        return ResultUtil.data(orderPackageService.getOrderPackageVOList(orderSn));
+    }
 }

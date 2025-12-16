@@ -20,7 +20,6 @@ import cn.lili.modules.promotion.tools.PromotionTools;
 import cn.lili.modules.search.utils.EsIndexUtil;
 import cn.lili.rocketmq.RocketmqSendCallbackBuilder;
 import cn.lili.rocketmq.tags.GoodsTagsEnum;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -29,10 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 积分商品业务层实现
@@ -41,7 +37,6 @@ import java.util.Map;
  * @since 2020/8/21
  **/
 @Service
-@Transactional(rollbackFor = Exception.class)
 @Slf4j
 public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<PointsGoodsMapper, PointsGoods> implements PointsGoodsService {
 
@@ -70,6 +65,7 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
 
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean savePointsGoodsBatch(List<PointsGoods> promotionsList) {
         List<PromotionGoods> promotionGoodsList = new ArrayList<>();
         for (PointsGoods pointsGoods : promotionsList) {
@@ -78,7 +74,8 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
             if (this.checkSkuDuplicate(pointsGoods.getSkuId(), null) == null) {
                 pointsGoods.setPromotionName("积分商品活动");
             } else {
-                throw new ServiceException("商品id为" + pointsGoods.getSkuId() + "的商品已参加积分商品活动！");
+                throw new ServiceException(ResultCode.PROMOTION_LOG_EXIST, "商品id为" + pointsGoods.getSkuId() +
+                        "的商品已参加积分商品活动！");
             }
             GoodsSku goodsSku = this.checkSkuExist(pointsGoods.getSkuId());
             pointsGoods.setStoreId(goodsSku.getStoreId());
@@ -112,14 +109,16 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      * @return 是否更新成功
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean updatePromotions(PointsGoods promotions) {
         boolean result = false;
         this.checkStatus(promotions);
         this.checkPromotions(promotions);
         if (this.checkSkuDuplicate(promotions.getSkuId(), promotions.getId()) == null) {
             result = this.updateById(promotions);
-            this.updatePromotionsGoods(promotions);
-            this.updateEsGoodsIndex(promotions);
+            if (this.updatePromotionsGoods(promotions)) {
+                this.updateEsGoodsIndex(promotions);
+            }
         }
         return result;
     }
@@ -131,6 +130,7 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      * @return 是否移除成功
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean removePromotions(List<String> ids) {
         for (String id : ids) {
             PointsGoods pointsGoods = this.getById(id);
@@ -166,7 +166,9 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      */
     @Override
     public PointsGoodsVO getPointsGoodsDetailBySkuId(String skuId) {
-        PointsGoods pointsGoods = this.getOne(new LambdaQueryWrapper<PointsGoods>().eq(PointsGoods::getSkuId, skuId), false);
+        QueryWrapper<PointsGoods> queryWrapper = new QueryWrapper<PointsGoods>().eq("sku_id", skuId);
+        queryWrapper.and(PromotionTools.queryPromotionStatus(PromotionsStatusEnum.START));
+        PointsGoods pointsGoods = this.getOne(queryWrapper, false);
         if (pointsGoods == null) {
             log.error("skuId为" + skuId + "的积分商品不存在！");
             throw new ServiceException();
@@ -205,11 +207,13 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      * 更新促销商品信息
      *
      * @param promotions 促销实体
+     * @return 是否更新成功
      */
     @Override
-    public void updatePromotionsGoods(PointsGoods promotions) {
-        this.promotionGoodsService.remove(new LambdaQueryWrapper<PromotionGoods>().eq(PromotionGoods::getPromotionId, promotions.getId()));
-        this.promotionGoodsService.save(new PromotionGoods(promotions, this.checkSkuExist(promotions.getSkuId())));
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updatePromotionsGoods(PointsGoods promotions) {
+        this.promotionGoodsService.deletePromotionGoods(Collections.singletonList(promotions.getId()));
+        return this.promotionGoodsService.save(new PromotionGoods(promotions, this.checkSkuExist(promotions.getSkuId())));
     }
 
     /**
@@ -219,6 +223,7 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      */
     @Override
     public void updateEsGoodsIndex(PointsGoods promotions) {
+        super.updateEsGoodsIndex(promotions);
         Map<String, Object> query = MapUtil.builder(new HashMap<String, Object>()).put("id", promotions.getSkuId()).build();
         Map<String, Object> update = MapUtil.builder(new HashMap<String, Object>()).put("points", promotions.getPoints()).build();
         //修改规格索引,发送mq消息
@@ -242,10 +247,15 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
     private PointsGoods checkExist(String id) {
         PointsGoods pointsGoods = this.getById(id);
         if (pointsGoods == null) {
-            log.error("id为" + id + "的积分商品不存在！");
+            log.error("id为{}的积分商品不存在！", id);
             throw new ServiceException();
         }
         return pointsGoods;
+    }
+
+    @Override
+    public boolean allowExistSame() {
+        return true;
     }
 
     /**
@@ -274,7 +284,7 @@ public class PointsGoodsServiceImpl extends AbstractPromotionsServiceImpl<Points
      * @return 商品sku
      */
     private GoodsSku checkSkuExist(String skuId) {
-        GoodsSku goodsSku = this.goodsSkuService.getGoodsSkuByIdFromCache(skuId);
+        GoodsSku goodsSku = this.goodsSkuService.getCanPromotionGoodsSkuByIdFromCache(skuId);
         if (goodsSku == null) {
             log.error("商品ID为" + skuId + "的商品不存在！");
             throw new ServiceException();

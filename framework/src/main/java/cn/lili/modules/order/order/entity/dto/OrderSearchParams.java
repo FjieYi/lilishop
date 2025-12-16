@@ -63,9 +63,6 @@ public class OrderSearchParams extends PageVO {
     @ApiModelProperty(value = "关键字 商品名称/买家名称/店铺名称")
     private String keywords;
 
-    @ApiModelProperty(value = "付款方式")
-    private String paymentType;
-
     /**
      * @see OrderTypeEnum
      * @see cn.lili.modules.order.order.entity.enums.OrderPromotionTypeEnum
@@ -106,6 +103,9 @@ public class OrderSearchParams extends PageVO {
     @ApiModelProperty(value = "是否为某订单类型的订单，如果是则为订单类型的id，否则为空")
     private String promotionId;
 
+    @ApiModelProperty(value = "总价格,可以为范围，如10_1000")
+    private String flowPrice;
+
     /**
      * @see OrderPromotionTypeEnum
      */
@@ -118,7 +118,11 @@ public class OrderSearchParams extends PageVO {
 
         //关键字查询
         if (CharSequenceUtil.isNotEmpty(keywords)) {
-            wrapper.like("o.sn", keywords).or().like("oi.goods_name", keywords);
+            wrapper.and(keyWrapper -> keyWrapper.like("o.sn", keywords).or()
+                    .like("oi.goods_name", keywords).or()
+                    .like("o.consignee_name", keywords).or()
+                    .like("o.consignee_mobile", keywords).or()
+                    .like("o.store_name", keywords));
         }
         if (currentUser != null) {
             //按卖家查询
@@ -153,9 +157,6 @@ public class OrderSearchParams extends PageVO {
 
         //按商品名称查询
         wrapper.like(CharSequenceUtil.isNotEmpty(goodsName), "oi.goods_name", goodsName);
-
-        //付款方式
-        wrapper.like(CharSequenceUtil.isNotEmpty(paymentType), "o.payment_type", paymentType);
 
         //按支付方式
         wrapper.eq(CharSequenceUtil.isNotEmpty(paymentMethod), "o.payment_method", paymentMethod);
@@ -209,6 +210,14 @@ public class OrderSearchParams extends PageVO {
 
         wrapper.eq(CharSequenceUtil.isNotEmpty(orderPromotionType), "o.order_promotion_type", orderPromotionType);
 
+        if (CharSequenceUtil.isNotEmpty(flowPrice)) {
+            String[] s = flowPrice.split("_");
+            if (s.length > 1) {
+                wrapper.between("o.flow_price", s[0], s[1]);
+            } else {
+                wrapper.ge("o.flow_price", s[0]);
+            }
+        }
         wrapper.eq("o.delete_flag", false);
         return wrapper;
     }

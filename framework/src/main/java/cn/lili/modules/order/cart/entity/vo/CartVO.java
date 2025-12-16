@@ -81,10 +81,12 @@ public class CartVO extends CartBase implements Serializable {
     public CartVO(CartSkuVO cartSkuVO) {
         this.setStoreId(cartSkuVO.getStoreId());
         this.setStoreName(cartSkuVO.getStoreName());
+        this.setDeliveryMethod(cartSkuVO.getDeliveryMethod());
         this.setSkuList(new ArrayList<>());
         this.setCouponList(new ArrayList<>());
         this.setGiftList(new ArrayList<>());
         this.setGiftCouponList(new ArrayList<>());
+        this.setCanReceiveCoupon(new ArrayList<>());
         this.setChecked(false);
         this.isFull = false;
         this.weight = 0d;

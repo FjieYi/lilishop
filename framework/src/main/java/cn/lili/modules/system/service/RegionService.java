@@ -19,6 +19,29 @@ import java.util.Map;
 @CacheConfig(cacheNames = "{regions}")
 public interface RegionService extends IService<Region> {
 
+
+    /**
+     * 更新地区
+     *
+     * @param region 地区
+     * @return
+     */
+    @CacheEvict(allEntries = true)
+    @Override
+    boolean updateById(Region region);
+    /**
+     * 更新地区
+     *
+     * @param region 地区
+     * @return
+     */
+    @CacheEvict(allEntries = true)
+    @Override
+    boolean save(Region region);
+
+
+    @CacheEvict(allEntries = true)
+    boolean removeByIds(List<String> idList);
     /**
      * 同步行政数据
      *
@@ -35,6 +58,14 @@ public interface RegionService extends IService<Region> {
      */
     @Cacheable(key = "#id")
     List<Region> getItem(String id);
+
+    /**
+     * 根据最后一级名称获取改所有上级地区id
+     *
+     * @param lastName 最后一级名称
+     * @return 全部地区id
+     */
+    String getItemByLastName(String lastName);
 
     /**
      * 获取地址

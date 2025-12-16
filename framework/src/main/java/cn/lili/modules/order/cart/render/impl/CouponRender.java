@@ -19,10 +19,7 @@ import cn.lili.modules.promotion.service.MemberCouponService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -34,8 +31,6 @@ import java.util.stream.Collectors;
 @Service
 public class CouponRender implements CartRenderStep {
 
-    @Autowired
-    private PromotionPriceUtil promotionPriceUtil;
     @Autowired
     private MemberCouponService memberCouponService;
 
@@ -60,7 +55,15 @@ public class CouponRender implements CartRenderStep {
      * @param tradeDTO 交易dto
      */
     private void renderCouponRule(TradeDTO tradeDTO) {
-        List<MemberCoupon> memberCouponList = memberCouponService.getMemberCoupons();
+        // 清除之前的优惠券
+        tradeDTO.removeCoupon();
+
+        List<MemberCoupon> memberCouponList = memberCouponService.getMemberCoupons(tradeDTO.getMemberId());
+
+        //获取最新优惠券
+        memberCouponList = memberCouponList.stream()
+                .filter(item -> item.getStartTime().before(new Date()) && item.getEndTime().after(new Date()))
+                .collect(Collectors.toList());
 
         if (!memberCouponList.isEmpty()) {
             this.checkMemberExistCoupon(tradeDTO, memberCouponList);
@@ -209,14 +212,27 @@ public class CouponRender implements CartRenderStep {
         MemberCouponDTO platformCoupon = tradeDTO.getPlatformCoupon();
         //如果有勾选平台优惠券
         if (platformCoupon != null) {
-            renderSku(tradeDTO, platformCoupon);
+            //判断该优惠券是否可以使用，如果可以进行价格渲染，如果不可以使用，去掉该优惠券的使用
+            boolean checkFlag = tradeDTO.getCanUseCoupons().stream().anyMatch(item -> item.getCouponId().equals(platformCoupon.getMemberCoupon().getCouponId()));
+            if(checkFlag){
+                renderSku(tradeDTO, platformCoupon);
+            }else{
+                tradeDTO.setPlatformCoupon(null);
+            }
         }
         //计算商家优惠券
         Map<String, MemberCouponDTO> map = tradeDTO.getStoreCoupons();
         if (map != null && map.size() > 0) {
             for (MemberCouponDTO memberCouponDTO : map.values()) {
-                renderSku(tradeDTO, memberCouponDTO);
+                //判断该优惠券是否可以使用，如果可以进行价格渲染，如果不可以使用，去掉该优惠券的使用
+                boolean storeCouponCheck = tradeDTO.getCanUseCoupons().stream().anyMatch(item -> item.getCouponId().equals(memberCouponDTO.getMemberCoupon().getCouponId()));
+                if(storeCouponCheck){
+                    renderSku(tradeDTO, memberCouponDTO);
+                }else{
+                    map.values().remove(memberCouponDTO);
+                }
             }
+            tradeDTO.setStoreCoupons(map);
         }
     }
 
@@ -262,9 +278,9 @@ public class CouponRender implements CartRenderStep {
      */
     private void renderCouponPrice(Map<String, Double> couponMap, TradeDTO tradeDTO, MemberCoupon coupon, MemberCouponDTO memberCouponDTO) {
         //分发优惠券
-        promotionPriceUtil.recountPrice(tradeDTO, memberCouponDTO.getSkuDetail(), memberCouponDTO.getMemberCoupon().getPrice(),
+        PromotionPriceUtil.recountPrice(tradeDTO, memberCouponDTO.getSkuDetail(), memberCouponDTO.getMemberCoupon().getPrice(),
                 Boolean.TRUE.equals(coupon.getPlatformFlag()) ?
-                        PromotionTypeEnum.PLATFORM_COUPON : PromotionTypeEnum.COUPON);
+                        PromotionTypeEnum.PLATFORM_COUPON : PromotionTypeEnum.COUPON, memberCouponDTO.getMemberCoupon().getCouponId());
         //如果是平台券 则需要计算商家承担比例
         if (Boolean.TRUE.equals(coupon.getPlatformFlag()) && coupon.getStoreCommission() > 0) {
 

@@ -1,31 +1,37 @@
 package cn.lili.modules.promotion.serviceimpl;
 
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.map.MapBuilder;
 import cn.hutool.core.text.CharSequenceUtil;
 import cn.hutool.json.JSONUtil;
 import cn.lili.common.enums.ResultCode;
+import cn.lili.common.event.TransactionCommitSendMQEvent;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.properties.RocketmqCustomProperties;
 import cn.lili.common.vo.PageVO;
+import cn.lili.modules.promotion.entity.dos.BasePromotions;
 import cn.lili.modules.promotion.entity.dos.PromotionGoods;
-import cn.lili.modules.promotion.entity.dto.BasePromotions;
+import cn.lili.modules.promotion.entity.dto.search.BasePromotionsSearchParams;
 import cn.lili.modules.promotion.entity.enums.PromotionsScopeTypeEnum;
-import cn.lili.modules.promotion.entity.vos.BasePromotionsSearchParams;
+import cn.lili.modules.promotion.entity.enums.PromotionsStatusEnum;
 import cn.lili.modules.promotion.service.AbstractPromotionsService;
 import cn.lili.modules.promotion.service.PromotionGoodsService;
 import cn.lili.modules.promotion.tools.PromotionTools;
 import cn.lili.mybatis.util.PageUtil;
-import cn.lili.rocketmq.RocketmqSendCallbackBuilder;
 import cn.lili.rocketmq.tags.GoodsTagsEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.validation.constraints.NotNull;
 import java.util.*;
+
+import static cn.lili.modules.promotion.tools.PromotionTools.queryPromotionStatus;
 
 /**
  * @author paulG
@@ -45,11 +51,8 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
     @Autowired
     private RocketmqCustomProperties rocketmqCustomProperties;
 
-    /**
-     * rocketMq
-     */
     @Autowired
-    private RocketMQTemplate rocketMQTemplate;
+    private ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * 通用促销保存
@@ -69,8 +72,9 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
         this.initPromotion(promotions);
         this.checkPromotions(promotions);
         boolean save = this.save(promotions);
-        this.updatePromotionsGoods(promotions);
-        this.updateEsGoodsIndex(promotions);
+        if (this.updatePromotionsGoods(promotions)) {
+            this.updateEsGoodsIndex(promotions);
+        }
         return save;
     }
 
@@ -92,8 +96,9 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
         this.checkStatus(promotions);
         this.checkPromotions(promotions);
         boolean save = this.saveOrUpdate(promotions);
-        this.updatePromotionsGoods(promotions);
-        this.updateEsGoodsIndex(promotions);
+        if (this.updatePromotionsGoods(promotions)) {
+            this.updateEsGoodsIndex(promotions);
+        }
         return save;
     }
 
@@ -114,6 +119,7 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
             if (startTime != null && endTime != null) {
                 t.setStartTime(new Date(startTime));
                 t.setEndTime(new Date(endTime));
+                this.checkPromotions(t);
             } else {
                 t.setStartTime(null);
                 t.setEndTime(null);
@@ -158,7 +164,6 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
      */
     @Override
     public <S extends BasePromotionsSearchParams> IPage<T> pageFindAll(S searchParams, PageVO page) {
-        page.setNotConvert(false);
         return this.page(PageUtil.initPage(page), searchParams.queryWrapper());
     }
 
@@ -193,6 +198,9 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
     @Override
     public void checkPromotions(T promotions) {
         PromotionTools.checkPromotionTime(promotions.getStartTime(), promotions.getEndTime());
+        if (!this.allowExistSame()) {
+            this.checkSamePromotions(promotions);
+        }
     }
 
     /**
@@ -212,16 +220,19 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
      * 更新促销商品信息
      *
      * @param promotions 促销实体
+     * @return 是否更新成功
      */
     @Override
     @Transactional(rollbackFor = {Exception.class})
-    public void updatePromotionsGoods(T promotions) {
+    public boolean updatePromotionsGoods(T promotions) {
         if (promotions.getStartTime() == null && promotions.getEndTime() == null) {
             this.promotionGoodsService.deletePromotionGoods(Collections.singletonList(promotions.getId()));
-            return;
+            return true;
         }
-        if (PromotionsScopeTypeEnum.ALL.name().equals(promotions.getScopeType())) {
+        boolean result = true;
+        if (CharSequenceUtil.equalsAny(promotions.getScopeType(), PromotionsScopeTypeEnum.ALL.name(), PromotionsScopeTypeEnum.PORTION_GOODS_CATEGORY.name())) {
             PromotionGoods promotionGoods = new PromotionGoods();
+            promotionGoods.setScopeId(promotions.getScopeId());
             promotionGoods.setScopeType(promotions.getScopeType());
             promotionGoods.setPromotionId(promotions.getId());
             promotionGoods.setStoreId(promotions.getStoreId());
@@ -231,8 +242,9 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
             promotionGoods.setPromotionType(this.getPromotionType().name());
             promotionGoods.setTitle(promotions.getPromotionName());
             this.promotionGoodsService.deletePromotionGoods(Collections.singletonList(promotions.getId()));
-            this.promotionGoodsService.save(promotionGoods);
+            result = this.promotionGoodsService.save(promotionGoods);
         }
+        return result;
     }
 
     /**
@@ -241,27 +253,88 @@ public abstract class AbstractPromotionsServiceImpl<M extends BaseMapper<T>, T e
      * @param promotions 促销实体
      */
     @Override
+    @Transactional(rollbackFor = {Exception.class})
     public void updateEsGoodsIndex(T promotions) {
         if (promotions.getStartTime() == null && promotions.getEndTime() == null) {
+            Map<Object, Object> build = MapBuilder.create().put("promotionKey", this.getPromotionType() + "-" + promotions.getId()).put("scopeId", promotions.getScopeId()).build();
             //删除商品促销消息
-            String destination = rocketmqCustomProperties.getGoodsTopic() + ":" + GoodsTagsEnum.DELETE_GOODS_INDEX_PROMOTIONS.name();
-            //发送mq消息
-            rocketMQTemplate.asyncSend(destination, JSONUtil.toJsonStr(promotions), RocketmqSendCallbackBuilder.commonCallback());
+            applicationEventPublisher.publishEvent(new TransactionCommitSendMQEvent("删除商品促销事件", rocketmqCustomProperties.getGoodsTopic(), GoodsTagsEnum.DELETE_GOODS_INDEX_PROMOTIONS.name(), JSONUtil.toJsonStr(build)));
         } else {
-
-            String esPromotionKey = this.getPromotionType().name() + "-" + promotions.getId();
-            Map<String, Object> map = new HashMap<>();
-            // es促销key
-            map.put("esPromotionKey", esPromotionKey);
-            // 促销类型全路径名
-            map.put("promotionsType", promotions.getClass().getName());
-            // 促销实体
-            map.put("promotions", promotions);
-            //更新商品促销消息
-            String destination = rocketmqCustomProperties.getGoodsTopic() + ":" + GoodsTagsEnum.UPDATE_GOODS_INDEX_PROMOTIONS.name();
-            //发送mq消息
-            rocketMQTemplate.asyncSend(destination, JSONUtil.toJsonStr(map), RocketmqSendCallbackBuilder.commonCallback());
+            this.sendUpdateEsGoodsMsg(promotions);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void sendUpdateEsGoodsMsg(T promotions) {
+
+        String esPromotionKey = this.getPromotionType().name() + "-" + promotions.getId();
+        Map<String, Object> map = new HashMap<>();
+        // es促销key
+        map.put("esPromotionKey", esPromotionKey);
+        // 促销类型全路径名
+        map.put("promotionsType", promotions.getClass().getName());
+        // 促销实体
+        map.put("promotions", promotions);
+        applicationEventPublisher.publishEvent(new TransactionCommitSendMQEvent("更新商品索引促销事件", rocketmqCustomProperties.getGoodsTopic(), GoodsTagsEnum.UPDATE_GOODS_INDEX_PROMOTIONS.name(), JSONUtil.toJsonStr(map)));
+    }
+
+    @Override
+    public boolean allowExistSame() {
+        return false;
+    }
+
+    public void checkSamePromotions(T promotions) {
+        if (promotions.getStartTime() == null || promotions.getEndTime() == null) {
+            return;
+        }
+
+        // 遍历编辑活动开始时间的当天开始时间到结束的当天结束时间内的活动
+        QueryWrapper<T> querySameWrapper = getSameWrapper(promotions);
+
+        this.list(querySameWrapper).forEach(promotion -> {
+            if (promotion.getStartTime() == null || promotion.getEndTime() == null) {
+                return;
+            }
+
+            if (isOverlapping(promotions.getStartTime(), promotions.getEndTime(), promotion.getStartTime(), promotion.getEndTime())) {
+                throw new ServiceException(ResultCode.PROMOTION_SAME_ACTIVE_EXIST);
+            }
+
+        });
+
+    }
+
+    /**
+     * 获取相同时间段的促销活动
+     *
+     * @param promotions 促销活动
+     * @return 相同时间段的促销活动
+     * @param <T> 促销活动类型
+     */
+    private static <T extends BasePromotions> @NotNull QueryWrapper<T> getSameWrapper(T promotions) {
+        QueryWrapper<T> querySameWrapper = new QueryWrapper<>();
+        querySameWrapper.eq("store_id", promotions.getStoreId());
+        querySameWrapper.eq("delete_flag", false);
+        querySameWrapper.ne("id", promotions.getId());
+        querySameWrapper.and(i -> i.or(queryPromotionStatus(PromotionsStatusEnum.NEW)).or(queryPromotionStatus(PromotionsStatusEnum.START)));
+        querySameWrapper.and(i -> i.or(j -> j.between("start_time", DateUtil.beginOfDay(promotions.getStartTime()), DateUtil.endOfDay(promotions.getEndTime()))
+                .or().between("end_time", DateUtil.beginOfDay(promotions.getStartTime()), DateUtil.endOfDay(promotions.getEndTime()))));
+        return querySameWrapper;
+    }
+
+    /**
+     * 判断两个时间段是否有交集
+     *
+     * @param a1 原时间段开始时间
+     * @param a2 原时间段结束时间
+     * @param b1 新时间段开始时间
+     * @param b2 新时间段结束时间
+     * @return 是否有交集
+     */
+    public static boolean isOverlapping(Date a1, Date a2, Date b1, Date b2) {
+        // 两个时间段有交集的条件是：b1在a1和a2之间，或者b2在a1和a2之间，或者a1在b1和b2之间
+        return (b1.before(a2) && b2.after(a1)) || (b1.before(a1) && b2.after(a2)) || (a1.before(b1) && a2.after(b2));
     }
 
 }

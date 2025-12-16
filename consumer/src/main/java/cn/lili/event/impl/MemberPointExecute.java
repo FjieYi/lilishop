@@ -1,8 +1,8 @@
 package cn.lili.event.impl;
 
 
+import cn.hutool.core.text.CharSequenceUtil;
 import cn.lili.common.utils.CurrencyUtil;
-import cn.lili.common.utils.StringUtils;
 import cn.lili.event.AfterSaleStatusChangeEvent;
 import cn.lili.event.GoodsCommentCompleteEvent;
 import cn.lili.event.MemberRegisterEvent;
@@ -15,6 +15,7 @@ import cn.lili.modules.order.aftersale.entity.dos.AfterSale;
 import cn.lili.modules.order.order.entity.dos.Order;
 import cn.lili.modules.order.order.entity.dto.OrderMessage;
 import cn.lili.modules.order.order.entity.enums.OrderPromotionTypeEnum;
+import cn.lili.modules.order.order.entity.enums.OrderStatusEnum;
 import cn.lili.modules.order.order.entity.enums.PayStatusEnum;
 import cn.lili.modules.order.order.service.OrderService;
 import cn.lili.modules.order.trade.entity.enums.AfterSaleStatusEnum;
@@ -103,14 +104,18 @@ public class MemberPointExecute implements MemberRegisterEvent, GoodsCommentComp
             }
             case COMPLETED: {
                 Order order = orderService.getBySn(orderMessage.getOrderSn());
-                //根据订单编号获取订单数据,如果订单促销类型不为空，并且订单促销类型为积分订单 则直接返回
-                if (StringUtils.isNotEmpty(order.getOrderPromotionType()) && order.getOrderPromotionType().equals(OrderPromotionTypeEnum.POINTS.name())) {
+                //如果是积分订单 则直接返回
+                if (CharSequenceUtil.isNotEmpty(order.getOrderPromotionType())
+                        && order.getOrderPromotionType().equals(OrderPromotionTypeEnum.POINTS.name())) {
                     return;
                 }
                 //获取积分设置
                 PointSetting pointSetting = getPointSetting();
+                if (pointSetting.getConsumer() == 0) {
+                    return;
+                }
                 //计算赠送积分数量
-                Double point = CurrencyUtil.mul(pointSetting.getMoney(), order.getFlowPrice(), 0);
+                Double point = CurrencyUtil.mul(pointSetting.getConsumer(), order.getFlowPrice(), 0);
                 //赠送会员积分
                 memberService.updateMemberPoint(point.longValue(), PointTypeEnum.INCREASE.name(), order.getMemberId(), "会员下单，赠送积分" + point + "分");
                 break;
@@ -130,12 +135,16 @@ public class MemberPointExecute implements MemberRegisterEvent, GoodsCommentComp
     @Override
     public void afterSaleStatusChange(AfterSale afterSale) {
         if (afterSale.getServiceStatus().equals(AfterSaleStatusEnum.COMPLETE.name())) {
+            Order order = orderService.getBySn(afterSale.getOrderSn());
             //获取积分设置
             PointSetting pointSetting = getPointSetting();
+            if (pointSetting.getConsumer() == 0 || !OrderStatusEnum.COMPLETED.name().equals(order.getOrderStatus())) {
+                return;
+            }
             //计算扣除积分数量
-            Double point = CurrencyUtil.mul(pointSetting.getMoney(), afterSale.getActualRefundPrice(), 0);
+            Double point = CurrencyUtil.mul(pointSetting.getConsumer(), afterSale.getActualRefundPrice(), 0);
             //扣除会员积分
-            memberService.updateMemberPoint(point.longValue(), PointTypeEnum.REDUCE.name(), afterSale.getMemberId(), "会员退款，回退积分" + point + "分");
+            memberService.updateMemberPoint(point.longValue(), PointTypeEnum.REDUCE.name(), afterSale.getMemberId(), "会员退款，回退消费赠送积分" + point + "分");
 
         }
     }

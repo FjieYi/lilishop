@@ -6,7 +6,7 @@ import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.order.cart.entity.vo.FullDiscountVO;
 import cn.lili.modules.promotion.entity.dos.FullDiscount;
-import cn.lili.modules.promotion.entity.vos.FullDiscountSearchParams;
+import cn.lili.modules.promotion.entity.dto.search.FullDiscountSearchParams;
 import cn.lili.modules.promotion.service.FullDiscountService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import io.swagger.annotations.Api;
@@ -35,7 +35,6 @@ public class FullDiscountManagerController {
     @ApiOperation(value = "获取满优惠列表")
     @GetMapping
     public ResultMessage<IPage<FullDiscount>> getCouponList(FullDiscountSearchParams searchParams, PageVO page) {
-        page.setNotConvert(true);
         return ResultUtil.data(fullDiscountService.pageFindAll(searchParams, page));
     }
 

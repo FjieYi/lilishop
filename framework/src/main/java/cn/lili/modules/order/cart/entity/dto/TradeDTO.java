@@ -11,6 +11,7 @@ import cn.lili.modules.order.order.entity.vo.OrderVO;
 import cn.lili.modules.order.order.entity.vo.ReceiptVO;
 import cn.lili.modules.promotion.entity.dos.MemberCoupon;
 import cn.lili.modules.promotion.entity.vos.MemberCouponVO;
+import cn.lili.modules.store.entity.dos.StoreAddress;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 
@@ -107,6 +108,11 @@ public class TradeDTO implements Serializable {
     private MemberAddress memberAddress;
 
     /**
+     * 自提地址
+     */
+    private StoreAddress storeAddress;
+
+    /**
      * 客户端类型
      */
     private String clientType;
@@ -138,7 +144,6 @@ public class TradeDTO implements Serializable {
         this.cartList = new ArrayList<>();
         this.skuPromotionDetail = new HashMap<>();
         this.storeCoupons = new HashMap<>();
-        this.storeCoupons = new HashMap<>();
         this.priceDetailDTO = new PriceDetailDTO();
         this.cantUseCoupons = new ArrayList<>();
         this.canUseCoupons = new ArrayList<>();
@@ -159,5 +164,10 @@ public class TradeDTO implements Serializable {
             return skuList.stream().filter(CartSkuVO::getChecked).collect(Collectors.toList());
         }
         return skuList;
+    }
+
+    public void removeCoupon() {
+        this.canUseCoupons = new ArrayList<>();
+        this.cantUseCoupons = new ArrayList<>();
     }
 }
